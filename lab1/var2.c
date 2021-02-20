@@ -4,7 +4,7 @@
 #include <malloc.h>
 #include <math.h>
 
-int M_SIZE = 16;
+int M_SIZE = 10;
 
 
 void printVector(const double *v){
@@ -28,7 +28,7 @@ bool answerIsGot(const double *A, const double *b, const double *x){
     const double e = pow(10, -6);
     double *sol = (double*)malloc(sizeof(double) * M_SIZE);
     for (int i = 0; i < M_SIZE; ++i) {
-        double value = 0;
+        double value = 0.0;
         for (int j = 0; j < M_SIZE; ++j) {
             value += A[i * M_SIZE + j] * x[j];
         }
@@ -44,9 +44,9 @@ bool answerIsGot(const double *A, const double *b, const double *x){
 }
 
 
-void simpleIterationMethod(const double *A, const double *b, double *x, const int* numCols, int rank){
-    double* mulVec = (double*)malloc(sizeof(double) * M_SIZE);
-    double* resVec = (double*)malloc(sizeof(double) * numCols[rank]);
+void simpleIterationMethod(const double *A, double *x, const double *b, const int* numCols, int rank){
+    double *mulVec = (double*)malloc(sizeof(double) * M_SIZE);
+    double *resVec = (double*)malloc(sizeof(double) * numCols[rank]);
     const double t = 0.01;
     for (int i = 0; i < M_SIZE; ++i){
         mulVec[i] = 0;
@@ -75,29 +75,29 @@ void solution(double* A, double *b, double *x, double *blockData, int numProcs, 
         }
     }
 
-    int *updCoord = (int*)malloc(sizeof (int) * M_SIZE);
-    int *shiftCoord = (int*)malloc(sizeof (int) * M_SIZE);
-    updCoord[0] = M_SIZE / numProcs;
-    shiftCoord[0] = 0;
+    int *coordForEachProc = (int*)malloc(sizeof (int) * M_SIZE);
+    int *shiftForEachProc = (int*)malloc(sizeof (int) * M_SIZE);
+    coordForEachProc[0] = M_SIZE / numProcs;
+    shiftForEachProc[0] = 0;
 
     int restRows = M_SIZE;
     for (int i = 1; i < numProcs; ++i){
-        restRows -= updCoord[i-1];
-        updCoord[i] = restRows / (numProcs - i);
-        shiftCoord[i] = shiftCoord[i-1] + updCoord[i-1];
+        restRows -= coordForEachProc[i-1];
+        coordForEachProc[i] = restRows / (numProcs - i);
+        shiftForEachProc[i] = shiftForEachProc[i-1] + coordForEachProc[i-1];
     }
 
-    double *partVecX = (double*)malloc(sizeof(double) * updCoord[rank]);
-    double *partVecB = (double*)malloc(sizeof(double) * updCoord[rank]);
+    double *partVecX = (double*)malloc(sizeof(double) * coordForEachProc[rank]);
+    double *partVecB = (double*)malloc(sizeof(double) * coordForEachProc[rank]);
 
-    MPI_Scatterv(x, updCoord, shiftCoord, MPI_DOUBLE, partVecX, updCoord[rank], MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Scatterv(b, updCoord, shiftCoord, MPI_DOUBLE, partVecB, updCoord[rank], MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Scatterv(x, coordForEachProc, shiftForEachProc, MPI_DOUBLE, partVecX, coordForEachProc[rank], MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Scatterv(b, coordForEachProc, shiftForEachProc, MPI_DOUBLE, partVecB, coordForEachProc[rank], MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
     bool flag = false;
     do {
-        simpleIterationMethod(blockData, partVecB, partVecX, updCoord, rank);
-        MPI_Gatherv(partVecX, updCoord[rank], MPI_DOUBLE, x, updCoord,
-                       shiftCoord, MPI_DOUBLE,0, MPI_COMM_WORLD);
+        simpleIterationMethod(blockData, partVecX, partVecB, coordForEachProc, rank);
+        MPI_Gatherv(partVecX, coordForEachProc[rank], MPI_DOUBLE, x, coordForEachProc,
+                       shiftForEachProc, MPI_DOUBLE,0, MPI_COMM_WORLD);
         if (rank == 0){
             flag = answerIsGot(A,b,x);
         }
@@ -106,8 +106,8 @@ void solution(double* A, double *b, double *x, double *blockData, int numProcs, 
 
     free(partVecX);
     free(partVecB);
-    free(updCoord);
-    free(shiftCoord);
+    free(coordForEachProc);
+    free(shiftForEachProc);
 }
 
 
@@ -119,10 +119,10 @@ double* cutMatrix(double *A, int numProcs, int rank){
     MPI_Type_create_resized(allCol, 0, sizeof(double), &coltype);
     MPI_Type_commit(&coltype);
 
-    int* dataForEachProc = (int*)malloc(sizeof(int) * numProcs);
+    int *dataForEachProc = (int*)malloc(sizeof(int) * numProcs);
     int *shiftForEachProc = (int*)malloc(sizeof(int) * numProcs);
 
-    dataForEachProc[0] = (M_SIZE / numProcs);
+    dataForEachProc[0] = M_SIZE / numProcs;
     shiftForEachProc[0] = 0;
 
     int restCols = M_SIZE;

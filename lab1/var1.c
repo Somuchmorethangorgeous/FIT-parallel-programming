@@ -47,7 +47,7 @@ bool answerIsGot(const double *A, const double *b, const double *x){
 void simpleIterationMethod(const double *A, const double *b, double *x, int shift, int numRows){
     const double t = 0.01;
     for (int i = 0; i < numRows; ++i){
-        double value = 0;
+        double value = 0.0;
         for (int j = 0; j < M_SIZE; ++j){
             value += A[i*M_SIZE + j] * x[j];
         }
