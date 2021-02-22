@@ -4,15 +4,8 @@
 #include <malloc.h>
 #include <math.h>
 
-int M_SIZE = 10;
 
-
-void printVector(const double *v){
-    for (int i = 0; i < M_SIZE; ++i){
-        printf("%lf ", v[i]);
-    }
-    putchar('\n');
-}
+const int M_SIZE = 10;
 
 
 double norm(const double *v){
@@ -74,8 +67,8 @@ double* solution(const double *blockData, const double *b, int *dataVec, int *sh
 }
 
 
-void initMatrixAndB(double *blockData, double *b, const int* rowsForEachProc, const int *shiftForEachProc, int rank){
-    int shift = shiftForEachProc[rank];
+void initMatrixAndB(double *blockData, double *b, const int *rowsForEachProc, const int *shiftForEachProc, int rank){
+    const int shift = shiftForEachProc[rank];
     double *u = (double*)malloc(sizeof(double) * M_SIZE);
     for (int i = 0; i < rowsForEachProc[rank]; ++i){
         for (int j = 0; j < M_SIZE; ++j){
@@ -95,12 +88,6 @@ void initMatrixAndB(double *blockData, double *b, const int* rowsForEachProc, co
 
     MPI_Allgatherv(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, b, rowsForEachProc,
                    shiftForEachProc, MPI_DOUBLE, MPI_COMM_WORLD);
-
-    if (rank == 0) {
-        printf("Answer is: ");
-        printVector(u);
-        putchar('\n');
-    }
     free(u);
 }
 
@@ -112,7 +99,7 @@ double* cutMatrix(double *b, int *dataVec, int *shiftVec, int rank){
 }
 
 
- void dataDistribution(int *dataVec, int*shiftVec, int numProcs){
+ void dataDistribution(int *dataVec, int *shiftVec, int numProcs){
      dataVec[0] = M_SIZE / numProcs;
      shiftVec[0] = 0;
      int restRows = M_SIZE;
@@ -146,8 +133,6 @@ int main(int argc, char **argv) {
 
     MPI_Finalize();
 
-    printf("Solution of #%d process is: ", rank);
-    printVector(x);
     free(blockData);
     free(dataVec);
     free(shiftVec);

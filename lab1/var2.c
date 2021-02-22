@@ -4,15 +4,8 @@
 #include <malloc.h>
 #include <math.h>
 
-int M_SIZE = 10;
 
-
-void printVector(const double *v, const int len){
-    for (int i = 0; i < len; ++i){
-        printf("%lf ", v[i]);
-    }
-    putchar('\n');
-}
+const int M_SIZE = 10;
 
 
 double norm(const double *v,  const int len){
@@ -54,7 +47,7 @@ bool answerIsGot(const double *blockData, const double *partVecB, const double *
 }
 
 
-void simpleIterationMethod(const double *blockData, const double *partVecB, double *partVecX, const int* numCols, int rank){
+void simpleIterationMethod(const double *blockData, const double *partVecB, double *partVecX, const int *numCols, int rank){
     double *mulVec = (double*)malloc(sizeof(double) * M_SIZE);
     double *resVec = (double*)malloc(sizeof(double) * numCols[rank]);
     const double t = 0.01;
@@ -92,8 +85,8 @@ double* solution(const double *blockData, const double *partVecB, int *dataVec, 
 }
 
 
-void initMatrixAndB(double *blockData, double *partVecB, const int* colsForEachProc, const int *shiftForEachProc, int rank){
-    int shift = shiftForEachProc[rank];
+void initMatrixAndB(double *blockData, double *partVecB, const int *colsForEachProc, const int *shiftForEachProc, int rank){
+    const int shift = shiftForEachProc[rank];
     double *u = (double*)malloc(sizeof(double) * M_SIZE);
     for (int i = 0; i < colsForEachProc[rank]; ++i){
         for (int j = 0; j < M_SIZE; ++j){
@@ -109,11 +102,6 @@ void initMatrixAndB(double *blockData, double *partVecB, const int* colsForEachP
         for (int j = 0; j < M_SIZE; ++j){
             partVecB[i] += blockData[i*M_SIZE + j] * u[j];
         }
-    }
-    if (rank == 0) {
-        printf("Answer is: ");
-        printVector(u, M_SIZE);
-        putchar('\n');
     }
     free(u);
 }
@@ -157,14 +145,6 @@ int main(int argc, char **argv) {
     normB = norm(partVecB, dataVec[rank]);
 
     partVecX = solution(blockData, partVecB, dataVec, rank, normB);
-
-    for (int i = 0; i < size; ++i) {
-        MPI_Barrier(MPI_COMM_WORLD);
-        if (i == rank) {
-            printf("%d\n", rank);
-            printVector(partVecX, dataVec[rank]);
-        }
-    }
 
     MPI_Finalize();
     free(partVecB);
