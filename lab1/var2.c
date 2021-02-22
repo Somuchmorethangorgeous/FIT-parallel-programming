@@ -7,193 +7,170 @@
 int M_SIZE = 10;
 
 
-void printVector(const double *v){
-    for (int i = 0; i < M_SIZE; ++i){
+void printVector(const double *v, const int len){
+    for (int i = 0; i < len; ++i){
         printf("%lf ", v[i]);
     }
     putchar('\n');
 }
 
 
-double norm(const double *v){
-    double tmp = 0.0;
-    for (int i = 0; i < M_SIZE; ++i){
-        tmp += v[i] * v[i];
+double norm(const double *v,  const int len){
+    double localRes, globalRes;
+    localRes = 0.0;
+    for (int i = 0; i < len; ++i){
+        localRes += v[i] * v[i];
     }
-    return sqrt(tmp);
+    MPI_Allreduce(&localRes, &globalRes, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    return sqrt(globalRes);
 }
 
 
-bool answerIsGot(const double *A, const double *b, const double *x){
+bool answerIsGot(const double *blockData, const double *partVecB, const double *partVecX, const int *colsForEachProc, int rank, const double normB){
     const double e = pow(10, -6);
-    double *sol = (double*)malloc(sizeof(double) * M_SIZE);
-    for (int i = 0; i < M_SIZE; ++i) {
-        double value = 0.0;
-        for (int j = 0; j < M_SIZE; ++j) {
-            value += A[i * M_SIZE + j] * x[j];
-        }
-        sol[i] = value - b[i];
-    }
-    if (norm(sol) / norm (b) < e){
-        free(sol);
-        return true;
-    } else {
-        free(sol);
-        return false;
-    }
-}
-
-
-void simpleIterationMethod(const double *A, double *x, const double *b, const int* numCols, int rank){
     double *mulVec = (double*)malloc(sizeof(double) * M_SIZE);
-    double *resVec = (double*)malloc(sizeof(double) * numCols[rank]);
-    const double t = 0.01;
+    double *sol = (double*)malloc(sizeof(double) * colsForEachProc[rank]);
     for (int i = 0; i < M_SIZE; ++i){
         mulVec[i] = 0;
     }
+
+    for (int i = 0; i < colsForEachProc[rank]; ++i){
+        for (int j = 0; j < M_SIZE; ++j){
+            mulVec[j] += blockData[i*M_SIZE + j] * partVecX[i];
+        }
+    }
+
+    MPI_Reduce_scatter(mulVec, sol, colsForEachProc, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+
+    for (int i = 0; i < colsForEachProc[rank]; ++i){
+        sol[i] -= partVecB[i];
+    }
+
+    bool result = norm(sol, colsForEachProc[rank]) / normB < e;
+
+    free(sol);
+    free(mulVec);
+    return result;
+}
+
+
+void simpleIterationMethod(const double *blockData, const double *partVecB, double *partVecX, const int* numCols, int rank){
+    double *mulVec = (double*)malloc(sizeof(double) * M_SIZE);
+    double *resVec = (double*)malloc(sizeof(double) * numCols[rank]);
+    const double t = 0.01;
+
+    for (int i = 0; i < M_SIZE; ++i){
+        mulVec[i] = 0.0;
+    }
     for (int i = 0; i < numCols[rank]; ++i) {
         for (int j = 0; j < M_SIZE; ++j) {
-            mulVec[j] += A[i*M_SIZE+j] * x[i];
+            mulVec[j] += blockData[i*M_SIZE+j] * partVecX[i];
         }
     }
 
     MPI_Reduce_scatter(mulVec, resVec, numCols, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
     for (int i = 0; i < numCols[rank]; ++i){
-        x[i] -= t * (resVec[i] - b[i]);
+        partVecX[i] -= t * (resVec[i] - partVecB[i]);
     }
-
     free(mulVec);
     free(resVec);
 }
 
 
-void solution(double* A, double *b, double *x, double *blockData, int numProcs, int rank){
-    if (rank == 0) {
-        for (int i = 0; i < M_SIZE; ++i) {
-            x[i] = 0;
-        }
+double* solution(const double *blockData, const double *partVecB, int *dataVec, int rank, const double normB){
+   double *partVecX = (double*)malloc(sizeof(double) * dataVec[rank]);
+    for (int i = 0; i < dataVec[rank]; ++i){
+        partVecX[i] = 0.0;
     }
-
-    int *coordForEachProc = (int*)malloc(sizeof (int) * M_SIZE);
-    int *shiftForEachProc = (int*)malloc(sizeof (int) * M_SIZE);
-    coordForEachProc[0] = M_SIZE / numProcs;
-    shiftForEachProc[0] = 0;
-
-    int restRows = M_SIZE;
-    for (int i = 1; i < numProcs; ++i){
-        restRows -= coordForEachProc[i-1];
-        coordForEachProc[i] = restRows / (numProcs - i);
-        shiftForEachProc[i] = shiftForEachProc[i-1] + coordForEachProc[i-1];
-    }
-
-    double *partVecX = (double*)malloc(sizeof(double) * coordForEachProc[rank]);
-    double *partVecB = (double*)malloc(sizeof(double) * coordForEachProc[rank]);
-
-    MPI_Scatterv(x, coordForEachProc, shiftForEachProc, MPI_DOUBLE, partVecX, coordForEachProc[rank], MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Scatterv(b, coordForEachProc, shiftForEachProc, MPI_DOUBLE, partVecB, coordForEachProc[rank], MPI_DOUBLE, 0, MPI_COMM_WORLD);
-
-    bool flag = false;
+    bool isFinish = false;
     do {
-        simpleIterationMethod(blockData, partVecX, partVecB, coordForEachProc, rank);
-        MPI_Gatherv(partVecX, coordForEachProc[rank], MPI_DOUBLE, x, coordForEachProc,
-                       shiftForEachProc, MPI_DOUBLE,0, MPI_COMM_WORLD);
-        if (rank == 0){
-            flag = answerIsGot(A,b,x);
-        }
-        MPI_Bcast(&flag, 1, MPI_C_BOOL, 0, MPI_COMM_WORLD);
-    } while (!flag);
-
-    free(partVecX);
-    free(partVecB);
-    free(coordForEachProc);
-    free(shiftForEachProc);
+        simpleIterationMethod(blockData, partVecB, partVecX, dataVec, rank);
+        isFinish = answerIsGot(blockData, partVecB, partVecX, dataVec, rank, normB);
+    } while (!isFinish);
+    return partVecX;
 }
 
 
-double* cutMatrix(double *A, int numProcs, int rank){
-    MPI_Datatype allCol, coltype;
-
-    MPI_Type_vector(M_SIZE, 1, M_SIZE, MPI_DOUBLE, &allCol);
-    MPI_Type_commit(&allCol);
-    MPI_Type_create_resized(allCol, 0, sizeof(double), &coltype);
-    MPI_Type_commit(&coltype);
-
-    int *dataForEachProc = (int*)malloc(sizeof(int) * numProcs);
-    int *shiftForEachProc = (int*)malloc(sizeof(int) * numProcs);
-
-    dataForEachProc[0] = M_SIZE / numProcs;
-    shiftForEachProc[0] = 0;
-
-    int restCols = M_SIZE;
-    int numCols = M_SIZE / numProcs;
-    for (int i = 1; i < numProcs; ++i) {
-        restCols -= numCols;
-        numCols = restCols / (numProcs - i);
-        dataForEachProc[i] = numCols;
-        shiftForEachProc[i] = dataForEachProc[i-1] + shiftForEachProc[i-1];
-    }
-
-    double *blockData = (double*)malloc(sizeof(double) * dataForEachProc[rank] * M_SIZE);
-
-    MPI_Scatterv(A, dataForEachProc, shiftForEachProc, coltype, blockData, dataForEachProc[rank] * M_SIZE,
-                MPI_DOUBLE, 0, MPI_COMM_WORLD);
-
-    free(dataForEachProc);
-    free(shiftForEachProc);
-    return blockData;
-}
-
-
-
-void initMatrixAndB(double *A, double *b){
+void initMatrixAndB(double *blockData, double *partVecB, const int* colsForEachProc, const int *shiftForEachProc, int rank){
+    int shift = shiftForEachProc[rank];
     double *u = (double*)malloc(sizeof(double) * M_SIZE);
-    for (int i = 0; i < M_SIZE; ++i){
+    for (int i = 0; i < colsForEachProc[rank]; ++i){
         for (int j = 0; j < M_SIZE; ++j){
-            A[i*M_SIZE+j] = (i == j) ?  2.0 : 1.0;
+            blockData[i*M_SIZE+j] = (i + shift == j ) ?  2.0 : 1.0;
         }
-        u[i] = sin((2*M_PI*i) / M_SIZE);
+        u[i+shift] = sin((2*M_PI*(i+shift) / M_SIZE));
     }
-    for (int m = 0; m < M_SIZE; ++m){
-        b[m] = 0;
-        for (int n = 0; n < M_SIZE; ++n){
-            b[m] += A[m*M_SIZE + n] * u[n];
+
+    MPI_Allgatherv(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, u, colsForEachProc, shiftForEachProc, MPI_DOUBLE, MPI_COMM_WORLD);
+
+    for (int i = 0; i < colsForEachProc[rank]; ++i){
+        partVecB[i] = 0.0;
+        for (int j = 0; j < M_SIZE; ++j){
+            partVecB[i] += blockData[i*M_SIZE + j] * u[j];
         }
     }
-    printf("Answer is: ");
-    printVector(u);
-    putchar('\n');
+    if (rank == 0) {
+        printf("Answer is: ");
+        printVector(u, M_SIZE);
+        putchar('\n');
+    }
     free(u);
 }
 
 
+double* cutMatrix(double *partVecB, int *dataVec, int *shiftVec, int rank){
+    double *blockData = (double*)malloc(sizeof(double) * dataVec[rank] * M_SIZE);
+    initMatrixAndB(blockData, partVecB, dataVec, shiftVec, rank);
+    return blockData;
+}
+
+
+void dataDistribution(int *dataVec, int *shiftVec, int numProcs){
+    dataVec[0] = M_SIZE / numProcs;
+    shiftVec[0] = 0;
+    int restRows = M_SIZE;
+    for (int i = 1; i < numProcs; ++i){
+        restRows -= dataVec[i-1];
+        dataVec[i] = restRows / (numProcs - i);
+        shiftVec[i] = shiftVec[i-1] + dataVec[i-1];
+    }
+}
+
+
 int main(int argc, char **argv) {
-    double *A, *b, *x, *blockData;
+    double *partVecB, *partVecX, *blockData;
+    int *dataVec, *shiftVec;
     int size, rank;
+    double normB;
 
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-    if (rank == 0) {
-        x = (double*)malloc(sizeof(double) * M_SIZE);
-        b = (double*)malloc(sizeof(double) * M_SIZE);
-        A = (double*)malloc(sizeof(double) * M_SIZE * M_SIZE);
-        initMatrixAndB(A, b);
+    dataVec = (int*)malloc(sizeof(int) * size);
+    shiftVec = (int*)malloc(sizeof(int) * size);
+    dataDistribution(dataVec, shiftVec, size);
+
+    partVecB = (double*)malloc(sizeof(double) * dataVec[rank]);
+    blockData = cutMatrix(partVecB, dataVec, shiftVec, rank);
+    normB = norm(partVecB, dataVec[rank]);
+
+    partVecX = solution(blockData, partVecB, dataVec, rank, normB);
+
+    for (int i = 0; i < size; ++i) {
+        MPI_Barrier(MPI_COMM_WORLD);
+        if (i == rank) {
+            printf("%d\n", rank);
+            printVector(partVecX, dataVec[rank]);
+        }
     }
 
-    blockData = cutMatrix(A, size, rank);
-    solution(A, b, x, blockData, size, rank);
-
-    MPI_Barrier(MPI_COMM_WORLD);
     MPI_Finalize();
-    if (rank == 0) {
-        printf("Answer on root process is: ");
-        printVector(x);
-        free(b);
-        free(x);
-        free(A);
-    }
+    free(partVecB);
+    free(partVecX);
     free(blockData);
+    free(dataVec);
+    free(shiftVec);
     return 0;
 }
