@@ -14,10 +14,23 @@ double* initMatrix(const int X_dim, const int Y_dim){
     for (int i = 0; i < X_dim; ++i){
         for (int j = 0; j < Y_dim; ++j){
             M[i*Y_dim + j] = rand()%10;
-            printf("%lf ",  M[i*Y_dim + j]);
-        } putchar('\n');
+        }
     }
     return M;
+}
+
+
+double* calculateMatrixC(const int X_dim, const int Y_dim, const double *blockDataA, const double *blockDataB){
+    double *blockDataC = (double*)malloc(sizeof(double) * X_dim * Y_dim);
+    for (int i = 0; i < X_dim; ++i){
+        for (int j = 0; j < Y_dim; ++j){
+            blockDataC[i*Y_dim + j] = 0.0;
+            for (int k = 0; k < n2; ++k){
+                blockDataC[i*Y_dim + j] += blockDataA[i*n2 + k] * blockDataB[j*n2 + k];
+            }
+        }
+    }
+    return blockDataC;
 }
 
 
@@ -65,8 +78,9 @@ double* dataDistributionA(double *A, int *dataForEachProc, int *shiftForEachProc
 
 int main(int argc, char **argv) {
     double *A, *B, *C;
-    double *blockDataA, *blockDataB;
+    double *blockDataA, *blockDataB, *blockDataC;
     int *dataForEachProc, *shiftForEachProc;
+    int x_C, y_C;
     int size, rank;
 
     MPI_Init(&argc, &argv);
@@ -84,22 +98,39 @@ int main(int argc, char **argv) {
     }
 
     blockDataA = dataDistributionA(A, dataForEachProc, shiftForEachProc, size, rank);
-    blockDataB = dataDistributionB(B, dataForEachProc, shiftForEachProc, size, rank);
-
-   /* if (rank == 0){
-        putchar('\n');
-        for (int i = 0; i < dataForEachProc[rank]; ++i){
+    x_C = dataForEachProc[rank] / n2;
+    if (rank == 0){
+        for (int i = 0; i < x_C; ++i){
             for (int j = 0; j < n2; ++j){
-                printf("%lf ", blockDataB[i*n2 + j]);
+                printf("%lf ", blockDataA[i*n2 + j]);
+            } putchar('\n');
+        }putchar('\n');
+    }
+
+    blockDataB = dataDistributionB(B, dataForEachProc, shiftForEachProc, size, rank);
+    y_C = dataForEachProc[rank];
+
+    if (rank == 0) {
+        for (int i = 0; i < dataForEachProc[rank]; ++i) {
+            for (int j = 0; j < n2; ++j) {
+                printf("%lf ", blockDataB[i * n2 + j]);
             } putchar('\n');
         }
-    }*/
+        putchar('\n');
+        blockDataC = calculateMatrixC(x_C, y_C, blockDataA, blockDataB);
+       for (int i = 0; i < x_C; ++i){
+            for (int j = 0; j < y_C; ++j){
+                printf("%lf ", blockDataC[i*y_C + j]);
+            } putchar('\n');
+        }
+    }
 
     MPI_Finalize();
     if (rank == 0){
         free(A);
         free(B);
         free(C);
+        free(blockDataC);
     }
 
     free(blockDataA);
