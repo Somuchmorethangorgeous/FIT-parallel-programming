@@ -9,6 +9,18 @@ const int n2 = 8;
 const int n3 = 4;
 
 
+void multiplicationOnNodes(const double* blockDataA, const double *blockDataB, double *blockDataC, const int X_dimA, const int Y_dimA, const int Y_dimB){
+    for (int i = 0; i < X_dimA; ++i){
+        for (int j = 0; j < Y_dimB; ++j){
+            blockDataC[i*Y_dimB + j] = 0.0;
+            for (int k = 0; k < Y_dimA; ++k){
+                blockDataC[i*Y_dimB + j] += blockDataA[i*Y_dimA + k] * blockDataB[j*n2 + k];
+            }
+        }
+    }
+}
+
+
 double* initMatrix(const int X_dim, const int Y_dim){
     double *M = (double*)malloc(sizeof(double) * X_dim * Y_dim);
     for (int i = 0; i < X_dim; ++i){
@@ -71,7 +83,7 @@ int main(int argc, char** argv) {
     if (rank == 0) {
         A = initMatrix(n1, n2);
         B = initMatrix(n2, n3);
-        /*for (int i = 0; i < n1; ++i) {
+        for (int i = 0; i < n1; ++i) {
             for (int j = 0; j < n2; ++j) {
                 printf("%lf ", A[i * n2 + j]);
             }
@@ -84,7 +96,7 @@ int main(int argc, char** argv) {
             }
             putchar('\n');
         }
-        putchar('\n');*/
+        putchar('\n');
         C = (double *) malloc(sizeof(double) * n1 * n3);
     }
 
@@ -95,12 +107,19 @@ int main(int argc, char** argv) {
     blockDataB = (double*) malloc(sizeof(double) * n2 * n3 / sizeY);
     blockDataC = (double*)malloc(sizeof(double) * n1 * n3 / (sizeX * sizeY));
     dataDistributionOnNodes(A, B, blockDataA, blockDataB, rowCom, colCom, coords, sizeX, sizeY);
-    /*if (coords[0] == 0 && coords[1] == 1){
+    multiplicationOnNodes(blockDataA, blockDataB, blockDataC, n1 / sizeX, n2, n3 / sizeY);
+
+    /*if (coords[0] == 0 && coords[1] == 0){
        for (int i = 0; i < 16; ++i){
            printf("%lf ", blockDataA[i]);
        } putchar('\n');
        for (int i = 0; i < 16; ++i){
            printf("%lf ", blockDataB[i]);
+       } putchar('\n');
+       for (int i = 0; i < 2; ++i){
+           for (int j = 0; j < 2; ++j){
+               printf("%lf ", blockDataC[i*2+j]);
+           } putchar('\n');
        }
     }*/
 
