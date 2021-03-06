@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <malloc.h>
 #include <mpi.h>
 
 
@@ -107,6 +106,7 @@ int main(int argc, char** argv) {
     if (rank == 0) {
         A = initMatrix(n1, n2);
         B = initMatrix(n2, n3);
+#ifdef DEBUG_INFO
         for (int i = 0; i < n1; ++i) {
             for (int j = 0; j < n2; ++j) {
                 printf("%lf ", A[i*n2 + j]);
@@ -121,6 +121,7 @@ int main(int argc, char** argv) {
             putchar('\n');
         }
         putchar('\n');
+#endif
         C = (double*)malloc(sizeof(double) * n1 * n3);
     }
 
@@ -135,6 +136,7 @@ int main(int argc, char** argv) {
     multiplicationInNodes(blockDataA, blockDataB, blockDataC, n1 / sizeX, n2, n3 / sizeY);
     completeMatrix(C, blockDataC, n1 / sizeX, n3 / sizeY, size, comm2d);
 
+#ifdef DEBUG_INFO
     if (rank == 0){
         for (int i = 0; i < n1; ++i){
             for (int j = 0; j < n3; ++j){
@@ -142,6 +144,7 @@ int main(int argc, char** argv) {
             } putchar('\n');
         }
     }
+#endif
 
     MPI_Comm_free(&rowComm);
     MPI_Comm_free(&colComm);
