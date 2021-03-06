@@ -20,7 +20,7 @@ double* initMatrix(const int X_dim, const int Y_dim){
 }
 
 
-void completeMatrix(double *C, const double *blockDataC, const int sizeX, const int sizeY, const int size, MPI_Comm cart){
+void completeMatrix(double *C, const double *blockDataC, const int sizeX, const int sizeY, const int size, MPI_Comm comm2d){
   MPI_Datatype resizedSubarray, blockType;
   int counts[size], displs[size], coords[size];
   const int sizes[] = {n1, n3};
@@ -33,7 +33,7 @@ void completeMatrix(double *C, const double *blockDataC, const int sizeX, const 
 
   for (int i = 0; i < size; ++i){
       counts[i] = 1;
-      MPI_Cart_coords(cart, i, 2, coords);
+      MPI_Cart_coords(comm2d, i, 2, coords);
       displs[i] = coords[0] * n3 * sizeX + coords[1] * sizeY;
   }
 
