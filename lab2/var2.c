@@ -6,12 +6,11 @@
 
 #define PI 3.14159265358979323846
 
-const int M_SIZE = 250;
+const int M_SIZE = 500;
 
 
 double norm(const double *v){
     double tmp = 0.0;
-#pragma omp parallel for num_threads(4) reduction(+:tmp)
     for (int i = 0; i < M_SIZE; ++i) {
         tmp += v[i] * v[i];
     }
@@ -22,10 +21,8 @@ double norm(const double *v){
 bool answerIsGot(const double *A, const double *b, const double *x, const double normB){
     const double e = 1e-6;
     double *sol = (double*)malloc(sizeof(double) * M_SIZE);
-#pragma omp parallel num_threads(4)
     for (int i = 0; i < M_SIZE; ++i) {
         double value = 0.0;
-#pragma omp parallel for num_threads(4) reduction(+:value)
         for (int j = 0; j < M_SIZE; ++j) {
             value += A[i * M_SIZE + j] * x[j];
         }
@@ -39,10 +36,8 @@ bool answerIsGot(const double *A, const double *b, const double *x, const double
 
 void simpleIterationMethod(const double *A, const double *b, double *x){
     const double t = 0.01;
-#pragma omp parallel for num_threads(4)
     for (int i = 0; i < M_SIZE; ++i) {
         double value = 0.0;
-#pragma omp parallel for num_threads(4) reduction(+:value)
         for (int j = 0; j < M_SIZE; ++j) {
             value += A[i * M_SIZE + j] * x[j];
         }
@@ -53,28 +48,28 @@ void simpleIterationMethod(const double *A, const double *b, double *x){
 
 double* solution(double *A, double *b, const double normB){
     double *x = (double*)malloc(sizeof(double) * M_SIZE);
-#pragma omp parallel for num_threads(4)
     for (int i = 0; i < M_SIZE; ++i){
         x[i] = 0.0;
     }
     bool isFinish = false;
-    do {
-        simpleIterationMethod(A, b, x);
-        isFinish = answerIsGot(A,b,x, normB);
-    } while (!isFinish);
+#pragma omp parallel
+    {
+        do {
+            simpleIterationMethod(A, b, x);
+            isFinish = answerIsGot(A, b, x, normB);
+        } while (!isFinish);
+    }
     return x;
 }
 
 
 void initMatrixAndB(double *A, double *b){
-    int i, j;
     double *u = (double*)malloc(sizeof(double) * M_SIZE);
-
-    for (i = 0; i < M_SIZE; ++i) {
-        for (j = 0; j < M_SIZE; ++j) {
-            A[i * M_SIZE + j] = (i == j) ? 2.0 : 1.0;
+        for (int i = 0; i < M_SIZE; ++i) {
+            for (int j = 0; j < M_SIZE; ++j) {
+                A[i * M_SIZE + j] = (i == j) ? 2.0 : 1.0;
+            }
         }
-    }
 
     for (int i = 0; i < M_SIZE; ++i) {
         u[i] = sin((2 * PI * i) / M_SIZE);
@@ -85,7 +80,6 @@ void initMatrixAndB(double *A, double *b){
         for (int j = 0; j < M_SIZE; ++j) {
             b[i] += A[i * M_SIZE + j] * u[j];
         }
-
     }
 #ifdef DEBUG_INFO
     for (int i = 0; i < M_SIZE; ++i){
@@ -100,10 +94,9 @@ int main() {
     double *A, *b, *x;
     A = (double*)malloc(sizeof(double) * M_SIZE * M_SIZE);
     b = (double*)malloc(sizeof(double) * M_SIZE);
-    initMatrixAndB(A,b);
+    initMatrixAndB(A, b);
     const double normB = norm(b);
-    x = solution(A,b, normB);
-
+    x = solution(A, b, normB);
 #ifdef DEBUG_INFO
     printf("Answer is: ");
     for (int i = 0; i < M_SIZE; ++i){
@@ -115,3 +108,4 @@ int main() {
     free(x);
     return 0;
 }
+
