@@ -6,7 +6,7 @@
 
 #define PI 3.14159265358979323846
 
-const int M_SIZE = 500;
+const int M_SIZE = 10;
 
 
 double norm(const double *v){
@@ -18,47 +18,29 @@ double norm(const double *v){
 }
 
 
-bool answerIsGot(const double *A, const double *b, const double *x, const double normB){
-    const double e = 1e-6;
-    double *sol = (double*)malloc(sizeof(double) * M_SIZE);
-    for (int i = 0; i < M_SIZE; ++i) {
-        double value = 0.0;
-        for (int j = 0; j < M_SIZE; ++j) {
-            value += A[i * M_SIZE + j] * x[j];
-        }
-        sol[i] = value - b[i];
-    }
-    bool result = norm(sol) / normB < e;
-    free(sol);
-    return result;
-}
-
-
-void simpleIterationMethod(const double *A, const double *b, double *x){
-    const double t = 0.01;
-    for (int i = 0; i < M_SIZE; ++i) {
-        double value = 0.0;
-        for (int j = 0; j < M_SIZE; ++j) {
-            value += A[i * M_SIZE + j] * x[j];
-        }
-        x[i] -= t * (value - b[i]);
-    }
-}
-
-
-double* solution(double *A, double *b, const double normB){
-    double *x = (double*)malloc(sizeof(double) * M_SIZE);
-    for (int i = 0; i < M_SIZE; ++i){
-        x[i] = 0.0;
-    }
-    bool isFinish = false;
+double* solution(const double *A, const double *b, const double normB){
+    static const double e = 1e-6;
+    static const double t = 0.01;
+    double *x = (double*)calloc(M_SIZE, sizeof(double));
+    double *checkSol = (double*)malloc(sizeof(double) * M_SIZE);
+    double normSol;
+    do {
+        normSol = 0.0;
 #pragma omp parallel
-    {
-        do {
-            simpleIterationMethod(A, b, x);
-            isFinish = answerIsGot(A, b, x, normB);
-        } while (!isFinish);
-    }
+        {
+            #pragma omp for reduction(+:normSol)
+            for (int i = 0; i < M_SIZE; ++i) {
+                checkSol[i] = 0.0;
+                for (int j = 0; j < M_SIZE; ++j) {
+                    checkSol[i] += A[i * M_SIZE + j] * x[j];
+                }
+                checkSol[i] -= b[i];
+                normSol += checkSol[i] * checkSol[i];
+                x[i] -= t * checkSol[i];
+            }
+        }
+    } while (sqrt(normSol) / normB >= e);
+    free(checkSol);
     return x;
 }
 
@@ -73,7 +55,8 @@ void initMatrixAndB(double *A, double *b){
 
     for (int i = 0; i < M_SIZE; ++i) {
         u[i] = sin((2 * PI * i) / M_SIZE);
-    }
+        printf("%lf ", u[i]);
+    } putchar('\n');
 
     for (int i = 0; i < M_SIZE; ++i) {
         b[i] = 0.0;
@@ -81,11 +64,6 @@ void initMatrixAndB(double *A, double *b){
             b[i] += A[i * M_SIZE + j] * u[j];
         }
     }
-#ifdef DEBUG_INFO
-    for (int i = 0; i < M_SIZE; ++i){
-        printf("%lf ", u[i]);
-    } putchar('\n');
-#endif
     free(u);
 }
 
