@@ -5,7 +5,7 @@
 #include <math.h>
 
 
-const int M_SIZE = 10;
+const int M_SIZE = 250;
 
 
 double norm(const double *v){
@@ -17,10 +17,9 @@ double norm(const double *v){
 }
 
 
-bool answerIsGot(const double *blockData, const double *b, const double *x, const int *rowsForEachProc, const int *shiftVec, int rank, const double normB){
+bool answerIsGot(const double *blockData, const double *b, const double *x, double *sol, const int *rowsForEachProc, const int *shiftVec, int rank, const double normB){
     int shift = shiftVec[rank];
-    const double e = pow(10, -6);
-    double *sol = (double*)malloc(sizeof(double) * M_SIZE);
+    const double e = 1e-6;
     for (int i = 0; i < rowsForEachProc[rank]; ++i) {
         double value = 0;
         for (int j = 0; j < M_SIZE; ++j) {
@@ -31,9 +30,7 @@ bool answerIsGot(const double *blockData, const double *b, const double *x, cons
 
     MPI_Allgatherv(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, sol, rowsForEachProc, shiftVec, MPI_DOUBLE, MPI_COMM_WORLD);
 
-    bool result = norm(sol) / normB < e;
-    free(sol);
-    return result;
+    return norm(sol) / normB < e;;
 }
 
 
@@ -52,16 +49,14 @@ void simpleIterationMethod(const double *blockData, const double *b, double *x, 
 
 
 double* solution(const double *blockData, const double *b, int *dataVec, int *shiftVec, int rank, const double normB){
-    double *x = (double*)malloc(sizeof(double) * M_SIZE);
-    for (int i = 0; i < M_SIZE; ++i){
-        x[i] = 0.0;
-    }
+    double *x = (double*)calloc(M_SIZE, sizeof(double));
+    double sol[M_SIZE];
     bool isFinish = false;
     do {
         simpleIterationMethod(blockData, b, x, dataVec[rank], shiftVec[rank]);
         MPI_Allgatherv(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, x, dataVec,
                        shiftVec, MPI_DOUBLE, MPI_COMM_WORLD);
-        isFinish = answerIsGot(blockData, b, x, dataVec, shiftVec, rank, normB);
+        isFinish = answerIsGot(blockData, b, x, sol, dataVec, shiftVec, rank, normB);
     } while (!isFinish);
     return x;
 }
@@ -69,7 +64,7 @@ double* solution(const double *blockData, const double *b, int *dataVec, int *sh
 
 void initMatrixAndB(double *blockData, double *b, const int *rowsForEachProc, const int *shiftForEachProc, int rank){
     const int shift = shiftForEachProc[rank];
-    double *u = (double*)malloc(sizeof(double) * M_SIZE);
+    double u[M_SIZE];
     for (int i = 0; i < rowsForEachProc[rank]; ++i){
         for (int j = 0; j < M_SIZE; ++j){
             blockData[i*M_SIZE+j] = (i + shift == j) ?  2.0 : 1.0;
@@ -88,7 +83,6 @@ void initMatrixAndB(double *blockData, double *b, const int *rowsForEachProc, co
 
     MPI_Allgatherv(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, b, rowsForEachProc,
                    shiftForEachProc, MPI_DOUBLE, MPI_COMM_WORLD);
-    free(u);
 }
 
 
@@ -112,7 +106,8 @@ double* cutMatrix(double *b, int *dataVec, int *shiftVec, int rank){
 
 
 int main(int argc, char **argv) {
-    double *b, *x, *blockData;
+    double *x, *blockData;
+    double b[M_SIZE];
     int *dataVec, *shiftVec;
     int size, rank;
     double normB;
@@ -125,7 +120,6 @@ int main(int argc, char **argv) {
     shiftVec = (int*)malloc(sizeof(int) * size);
     dataDistribution(dataVec, shiftVec, size);
 
-    b = (double*)malloc(sizeof(double) * M_SIZE);
     blockData = cutMatrix(b, dataVec, shiftVec, rank);
     normB = norm(b);
 
@@ -136,7 +130,6 @@ int main(int argc, char **argv) {
     free(blockData);
     free(dataVec);
     free(shiftVec);
-    free(b);
     free(x);
     return 0;
 }
