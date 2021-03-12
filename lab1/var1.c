@@ -5,7 +5,7 @@
 #include <math.h>
 
 
-const int M_SIZE = 250;
+const int M_SIZE = 500;
 
 
 double norm(const double *v){
@@ -18,10 +18,10 @@ double norm(const double *v){
 
 
 bool answerIsGot(const double *blockData, const double *b, const double *x, double *sol, const int *rowsForEachProc, const int *shiftVec, int rank, const double normB){
-    int shift = shiftVec[rank];
-    const double e = 1e-6;
+    const int shift = shiftVec[rank];
+    static const double e = 1e-6;
     for (int i = 0; i < rowsForEachProc[rank]; ++i) {
-        double value = 0;
+        double value = 0.0;
         for (int j = 0; j < M_SIZE; ++j) {
             value += blockData[i * M_SIZE + j] * x[j];
         }
@@ -34,10 +34,8 @@ bool answerIsGot(const double *blockData, const double *b, const double *x, doub
 }
 
 
-
-
-void simpleIterationMethod(const double *blockData, const double *b, double *x, int numRows, int shift){
-    const double t = 0.01;
+void simpleIterationMethod(const double *blockData, const double *b, double *x, const int numRows, const int shift){
+    static const double t = 0.001;
     for (int i = 0; i < numRows; ++i){
         double value = 0.0;
         for (int j = 0; j < M_SIZE; ++j){
@@ -48,7 +46,7 @@ void simpleIterationMethod(const double *blockData, const double *b, double *x, 
 }
 
 
-double* solution(const double *blockData, const double *b, int *dataVec, int *shiftVec, int rank, const double normB){
+double* solution(const double *blockData, const double *b, const int *dataVec, const int *shiftVec, int rank, const double normB){
     double *x = (double*)calloc(M_SIZE, sizeof(double));
     double sol[M_SIZE];
     bool isFinish = false;
@@ -62,7 +60,7 @@ double* solution(const double *blockData, const double *b, int *dataVec, int *sh
 }
 
 
-void initMatrixAndB(double *blockData, double *b, const int *rowsForEachProc, const int *shiftForEachProc, int rank){
+void initMatrixAndB(double *blockData, double *b, const int *rowsForEachProc, const int *shiftForEachProc, const int rank){
     const int shift = shiftForEachProc[rank];
     double u[M_SIZE];
     for (int i = 0; i < rowsForEachProc[rank]; ++i){
@@ -75,7 +73,7 @@ void initMatrixAndB(double *blockData, double *b, const int *rowsForEachProc, co
     MPI_Allgatherv(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, u, rowsForEachProc, shiftForEachProc, MPI_DOUBLE, MPI_COMM_WORLD);
 
     for (int i = 0; i < rowsForEachProc[rank]; ++i){
-        b[i+shift] = 0;
+        b[i+shift] = 0.0;
         for (int j = 0; j < M_SIZE; ++j){
             b[i+shift] += blockData[i*M_SIZE + j] * u[j];
         }
@@ -86,14 +84,14 @@ void initMatrixAndB(double *blockData, double *b, const int *rowsForEachProc, co
 }
 
 
-double* cutMatrix(double *b, int *dataVec, int *shiftVec, int rank){
+double* cutMatrix(double *b, const int *dataVec, const int *shiftVec, const int rank){
     double *blockData = (double*)malloc(sizeof(double) * dataVec[rank] * M_SIZE);
     initMatrixAndB(blockData, b, dataVec, shiftVec, rank);
     return blockData;
 }
 
 
- void dataDistribution(int *dataVec, int *shiftVec, int numProcs){
+ void dataDistribution(int *dataVec, int *shiftVec, const int numProcs){
      dataVec[0] = M_SIZE / numProcs;
      shiftVec[0] = 0;
      int restRows = M_SIZE;

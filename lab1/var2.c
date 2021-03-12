@@ -6,7 +6,7 @@
 #include <math.h>
 
 
-const int M_SIZE = 300;
+const int M_SIZE = 500;
 
 
 double norm(const double *v,  const int len){
@@ -21,7 +21,7 @@ double norm(const double *v,  const int len){
 
 
 bool answerIsGot(const double *blockData, const double *partVecB, const double *partVecX, double *sol, const int *colsForEachProc, int rank, const double normB){
-    const double e = 1e-6;
+    static const double e = 1e-6;
     double mulVec[M_SIZE];
     memset(mulVec, 0, sizeof(double) * M_SIZE);
 
@@ -41,10 +41,10 @@ bool answerIsGot(const double *blockData, const double *partVecB, const double *
 }
 
 
-void simpleIterationMethod(const double *blockData, const double *partVecB, double *partVecX, double *resVec, const int *numCols, int rank){
+void simpleIterationMethod(const double *blockData, const double *partVecB, double *partVecX, double *resVec, const int *numCols, const int rank){
     double mulVec[M_SIZE];
     memset(mulVec, 0, M_SIZE * sizeof(double));
-    const double t = 0.001;
+    static const double t = 0.001;
 
     for (int i = 0; i < numCols[rank]; ++i){
         for (int j = 0; j < M_SIZE; ++j){
@@ -60,7 +60,7 @@ void simpleIterationMethod(const double *blockData, const double *partVecB, doub
 }
 
 
-double* solution(const double *blockData, const double *partVecB, int *dataVec, int rank, const double normB){
+double* solution(const double *blockData, const double *partVecB, const int *dataVec, const int rank, const double normB){
     double *partVecX = (double*)calloc(dataVec[rank], sizeof(double));
     double resVec[dataVec[rank]];
     double sol[M_SIZE];
@@ -73,12 +73,12 @@ double* solution(const double *blockData, const double *partVecB, int *dataVec, 
 }
 
 
-void initMatrixAndB(double *blockData, double *partVecB, const int *colsForEachProc, const int *shiftForEachProc, int rank){
+void initMatrixAndB(double *blockData, double *partVecB, const int *colsForEachProc, const int *shiftForEachProc, const int rank){
     const int shift = shiftForEachProc[rank];
     double u[M_SIZE];
     for (int i = 0; i < colsForEachProc[rank]; ++i){
         for (int j = 0; j < M_SIZE; ++j){
-            blockData[i*M_SIZE+j] = (i + shift == j ) ?  2.0 : 1.0;
+            blockData[i*M_SIZE+j] = (i + shift == j) ?  2.0 : 1.0;
         }
         u[i+shift] = sin((2*M_PI*(i+shift) / M_SIZE));
     }
@@ -94,14 +94,14 @@ void initMatrixAndB(double *blockData, double *partVecB, const int *colsForEachP
 }
 
 
-double* cutMatrix(double *partVecB, int *dataVec, int *shiftVec, int rank){
+double* cutMatrix(double *partVecB, const int *dataVec, const int *shiftVec, const int rank){
     double *blockData = (double*)malloc(sizeof(double) * dataVec[rank] * M_SIZE);
     initMatrixAndB(blockData, partVecB, dataVec, shiftVec, rank);
     return blockData;
 }
 
 
-void dataDistribution(int *dataVec, int *shiftVec, int numProcs){
+void dataDistribution(int *dataVec, int *shiftVec, const int numProcs){
     dataVec[0] = M_SIZE / numProcs;
     shiftVec[0] = 0;
     int restRows = M_SIZE;
