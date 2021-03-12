@@ -1,11 +1,12 @@
 #include <stdio.h>
+#include <string.h>
 #include <stdbool.h>
 #include <mpi.h>
 #include <malloc.h>
 #include <math.h>
 
 
-const int M_SIZE = 10;
+const int M_SIZE = 300;
 
 
 double norm(const double *v,  const int len){
@@ -19,13 +20,10 @@ double norm(const double *v,  const int len){
 }
 
 
-bool answerIsGot(const double *blockData, const double *partVecB, const double *partVecX, const int *colsForEachProc, int rank, const double normB){
-    const double e = pow(10, -6);
-    double *mulVec = (double*)malloc(sizeof(double) * M_SIZE);
-    double *sol = (double*)malloc(sizeof(double) * colsForEachProc[rank]);
-    for (int i = 0; i < M_SIZE; ++i){
-        mulVec[i] = 0;
-    }
+bool answerIsGot(const double *blockData, const double *partVecB, const double *partVecX, double *sol, const int *colsForEachProc, int rank, const double normB){
+    const double e = 1e-6;
+    double mulVec[M_SIZE];
+    memset(mulVec, 0, sizeof(double) * M_SIZE);
 
     for (int i = 0; i < colsForEachProc[rank]; ++i){
         for (int j = 0; j < M_SIZE; ++j){
@@ -39,24 +37,17 @@ bool answerIsGot(const double *blockData, const double *partVecB, const double *
         sol[i] -= partVecB[i];
     }
 
-    bool result = norm(sol, colsForEachProc[rank]) / normB < e;
-
-    free(sol);
-    free(mulVec);
-    return result;
+    return norm(sol, colsForEachProc[rank]) / normB < e;
 }
 
 
-void simpleIterationMethod(const double *blockData, const double *partVecB, double *partVecX, const int *numCols, int rank){
-    double *mulVec = (double*)malloc(sizeof(double) * M_SIZE);
-    double *resVec = (double*)malloc(sizeof(double) * numCols[rank]);
-    const double t = 0.01;
+void simpleIterationMethod(const double *blockData, const double *partVecB, double *partVecX, double *resVec, const int *numCols, int rank){
+    double mulVec[M_SIZE];
+    memset(mulVec, 0, M_SIZE * sizeof(double));
+    const double t = 0.001;
 
-    for (int i = 0; i < M_SIZE; ++i){
-        mulVec[i] = 0.0;
-    }
-    for (int i = 0; i < numCols[rank]; ++i) {
-        for (int j = 0; j < M_SIZE; ++j) {
+    for (int i = 0; i < numCols[rank]; ++i){
+        for (int j = 0; j < M_SIZE; ++j){
             mulVec[j] += blockData[i*M_SIZE+j] * partVecX[i];
         }
     }
@@ -66,20 +57,17 @@ void simpleIterationMethod(const double *blockData, const double *partVecB, doub
     for (int i = 0; i < numCols[rank]; ++i){
         partVecX[i] -= t * (resVec[i] - partVecB[i]);
     }
-    free(mulVec);
-    free(resVec);
 }
 
 
 double* solution(const double *blockData, const double *partVecB, int *dataVec, int rank, const double normB){
-   double *partVecX = (double*)malloc(sizeof(double) * dataVec[rank]);
-    for (int i = 0; i < dataVec[rank]; ++i){
-        partVecX[i] = 0.0;
-    }
+    double *partVecX = (double*)calloc(dataVec[rank], sizeof(double));
+    double resVec[dataVec[rank]];
+    double sol[M_SIZE];
     bool isFinish = false;
     do {
-        simpleIterationMethod(blockData, partVecB, partVecX, dataVec, rank);
-        isFinish = answerIsGot(blockData, partVecB, partVecX, dataVec, rank, normB);
+        simpleIterationMethod(blockData, partVecB, partVecX, resVec, dataVec, rank);
+        isFinish = answerIsGot(blockData, partVecB, partVecX, sol, dataVec, rank, normB);
     } while (!isFinish);
     return partVecX;
 }
@@ -87,7 +75,7 @@ double* solution(const double *blockData, const double *partVecB, int *dataVec, 
 
 void initMatrixAndB(double *blockData, double *partVecB, const int *colsForEachProc, const int *shiftForEachProc, int rank){
     const int shift = shiftForEachProc[rank];
-    double *u = (double*)malloc(sizeof(double) * M_SIZE);
+    double u[M_SIZE];
     for (int i = 0; i < colsForEachProc[rank]; ++i){
         for (int j = 0; j < M_SIZE; ++j){
             blockData[i*M_SIZE+j] = (i + shift == j ) ?  2.0 : 1.0;
@@ -103,7 +91,6 @@ void initMatrixAndB(double *blockData, double *partVecB, const int *colsForEachP
             partVecB[i] += blockData[i*M_SIZE + j] * u[j];
         }
     }
-    free(u);
 }
 
 
