@@ -6,7 +6,7 @@
 #define PI 3.14159265358979323846
 #define NUM_THREADS 4
 
-const int M_SIZE = 500;
+const int M_SIZE = 600;
 
 
 double norm(const double *v){
@@ -68,7 +68,7 @@ void initMatrixAndB(double *A, double *b){
 
 
 int main() {
-    double A[M_SIZE*M_SIZE];
+    double *A = (double*)malloc(sizeof(double) * M_SIZE * M_SIZE);
     double b[M_SIZE];
     initMatrixAndB(A,b);
     const double normB = norm(b);
@@ -80,5 +80,6 @@ int main() {
     } putchar('\n');
 #endif
     free(x);
+    free(A);
     return 0;
 }

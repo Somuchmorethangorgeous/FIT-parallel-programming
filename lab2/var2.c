@@ -1,11 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <math.h>
 #include <omp.h>
 
 #define PI 3.14159265358979323846
 
-const int M_SIZE = 500;
+const int M_SIZE = 600;
 
 
 double norm(const double *v) {
@@ -17,28 +18,35 @@ double norm(const double *v) {
 }
 
 
-double* solution(const double *A, const double *b, const double normB) {
+double *solution(const double *A, const double *b, const double normB) {
     static const double e = 1e-6;
     static const double t = 0.01;
-    double *x = (double*)calloc(M_SIZE, sizeof(double));
+    double *x = (double *) calloc(M_SIZE, sizeof(double));
     double checkSol[M_SIZE];
     double normSol;
-    do {
-        normSol = 0.0;
+    bool isFinish = false;
 #pragma omp parallel
-        {
+    {
+        while (!isFinish) {
+            normSol = 0.0;
 #pragma omp for reduction(+:normSol)
             for (int i = 0; i < M_SIZE; ++i) {
                 checkSol[i] = 0.0;
                 for (int j = 0; j < M_SIZE; ++j) {
+#pragma omp atomic
                     checkSol[i] += A[i * M_SIZE + j] * x[j];
                 }
                 checkSol[i] -= b[i];
                 normSol += checkSol[i] * checkSol[i];
                 x[i] -= t * checkSol[i];
             }
+#pragma omp single
+            {
+                if (sqrt(normSol) / normB < e)
+                    isFinish = true;
+            }
         }
-    } while (sqrt(normSol) / normB >= e);
+    }
     return x;
 }
 
@@ -65,7 +73,7 @@ void initMatrixAndB(double *A, double *b) {
 
 
 int main() {
-    double A[M_SIZE*M_SIZE];
+    double *A = (double *) malloc(sizeof(double) * M_SIZE * M_SIZE);
     double b[M_SIZE];
     initMatrixAndB(A, b);
     const double normB = norm(b);
@@ -78,6 +86,7 @@ int main() {
     putchar('\n');
 #endif
     free(x);
+    free(A);
     return 0;
 }
 
