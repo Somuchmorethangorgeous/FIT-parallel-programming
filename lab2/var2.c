@@ -6,7 +6,7 @@
 
 #define PI 3.14159265358979323846
 
-const int M_SIZE = 600;
+const int M_SIZE = 10;
 
 
 double norm(const double *v) {
@@ -19,31 +19,35 @@ double norm(const double *v) {
 
 
 double *solution(const double *A, const double *b, const double normB) {
-    static const double e = 1e-6;
+    static const double e = 1e-5;
     static const double t = 0.01;
-    double *x = (double *) calloc(M_SIZE, sizeof(double));
+    double *x = (double*)calloc(M_SIZE, sizeof(double));
     double checkSol[M_SIZE];
-    double normSol;
+    double normSol = 0., value;
     bool isFinish = false;
-#pragma omp parallel
+#pragma omp parallel private(value)
     {
         while (!isFinish) {
-            normSol = 0.0;
+#pragma omp for
+            for (int i = 0; i < M_SIZE; ++i) {
+                value = 0.0;
+                for (int j = 0; j < M_SIZE; ++j) {
+                    value += A[i * M_SIZE + j] * x[j];
+                }
+                x[i] -= t * (value - b[i]);
+            }
 #pragma omp for reduction(+:normSol)
             for (int i = 0; i < M_SIZE; ++i) {
-                checkSol[i] = 0.0;
+                value = 0.0;
                 for (int j = 0; j < M_SIZE; ++j) {
-#pragma omp atomic
-                    checkSol[i] += A[i * M_SIZE + j] * x[j];
+                    value += A[i * M_SIZE + j] * x[j];
                 }
-                checkSol[i] -= b[i];
-                normSol += checkSol[i] * checkSol[i];
-                x[i] -= t * checkSol[i];
+                normSol += (value - b[i]) * (value - b[i]);
             }
 #pragma omp single
             {
-                if (sqrt(normSol) / normB < e)
-                    isFinish = true;
+                isFinish = sqrt(normSol) / normB < e;
+                normSol = 0.0;
             }
         }
     }
@@ -61,7 +65,9 @@ void initMatrixAndB(double *A, double *b) {
 
     for (int i = 0; i < M_SIZE; ++i) {
         u[i] = sin((2 * PI * i) / M_SIZE);
+        printf("%lf ", u[i]);
     }
+    putchar('\n');
 
     for (int i = 0; i < M_SIZE; ++i) {
         b[i] = 0.0;
