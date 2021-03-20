@@ -6,7 +6,7 @@
 
 #define PI 3.14159265358979323846
 
-const int M_SIZE = 10;
+const int M_SIZE = 1000;
 
 
 double norm(const double *v) {
@@ -22,7 +22,6 @@ double *solution(const double *A, const double *b, const double normB) {
     static const double e = 1e-5;
     static const double t = 0.01;
     double *x = (double*)calloc(M_SIZE, sizeof(double));
-    double checkSol[M_SIZE];
     double normSol = 0., value;
     bool isFinish = false;
 #pragma omp parallel private(value)
@@ -65,9 +64,7 @@ void initMatrixAndB(double *A, double *b) {
 
     for (int i = 0; i < M_SIZE; ++i) {
         u[i] = sin((2 * PI * i) / M_SIZE);
-        printf("%lf ", u[i]);
     }
-    putchar('\n');
 
     for (int i = 0; i < M_SIZE; ++i) {
         b[i] = 0.0;
@@ -79,7 +76,7 @@ void initMatrixAndB(double *A, double *b) {
 
 
 int main() {
-    double *A = (double *) malloc(sizeof(double) * M_SIZE * M_SIZE);
+    double *A = (double*)malloc(sizeof(double) * M_SIZE * M_SIZE);
     double b[M_SIZE];
     initMatrixAndB(A, b);
     const double normB = norm(b);

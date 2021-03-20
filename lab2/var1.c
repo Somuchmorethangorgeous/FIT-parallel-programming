@@ -4,14 +4,13 @@
 #include <omp.h>
 
 #define PI 3.14159265358979323846
-#define NUM_THREADS 4
 
-const int M_SIZE = 600;
+const int M_SIZE = 1000;
 
 
 double norm(const double *v){
     double tmp = 0.0;
-#pragma omp parallel for num_threads(NUM_THREADS) reduction(+:tmp)
+#pragma omp parallel for reduction(+:tmp)
     for (int i = 0; i < M_SIZE; ++i) {
         tmp += v[i] * v[i];
     }
@@ -21,10 +20,10 @@ double norm(const double *v){
 
 void simpleIterationMethod(const double *A, const double *b, double *x, double *checkSol){
     static const double t = 0.01;
-#pragma omp parallel for num_threads(NUM_THREADS)
+#pragma omp parallel for
     for (int i = 0; i < M_SIZE; ++i) {
         checkSol[i] = 0.0;
-#pragma omp parallel for num_threads(NUM_THREADS) reduction(+:checkSol[i])
+#pragma omp parallel for reduction(+:checkSol[i])
         for (int j = 0; j < M_SIZE; ++j) {
             checkSol[i] += A[i * M_SIZE + j] * x[j];
         }
