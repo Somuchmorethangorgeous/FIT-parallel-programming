@@ -60,9 +60,6 @@ void initMatrixAndB(double *A, double *b) {
         for (int j = 0; j < M_SIZE; ++j) {
             A[i * M_SIZE + j] = (i == j) ? 2.0 : 1.0;
         }
-    }
-
-    for (int i = 0; i < M_SIZE; ++i) {
         u[i] = sin((2 * PI * i) / M_SIZE);
     }
 
