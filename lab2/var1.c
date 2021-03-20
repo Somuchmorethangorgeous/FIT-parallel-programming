@@ -20,21 +20,30 @@ double norm(const double *v){
 
 void simpleIterationMethod(const double *A, const double *b, double *x, double *checkSol){
     static const double t = 0.01;
-#pragma omp parallel for
+    double value = 0.0;
+#pragma omp parallel for private(value)
     for (int i = 0; i < M_SIZE; ++i) {
-        checkSol[i] = 0.0;
-#pragma omp parallel for reduction(+:checkSol[i])
+         value = 0.0;
+#pragma omp parallel for reduction(+:value)
         for (int j = 0; j < M_SIZE; ++j) {
-            checkSol[i] += A[i * M_SIZE + j] * x[j];
+            value += A[i * M_SIZE + j] * x[j];
         }
-        checkSol[i] -= b[i];
-        x[i] -= t * checkSol[i];
+        x[i] -= t * (value - b[i]);
+    }
+#pragma omp parallel for private(value)
+    for (int i = 0; i < M_SIZE; ++i){
+        value = 0.0;
+#pragma omp parallel for reduction(+:value)
+        for (int j = 0; j < M_SIZE; ++j){
+            value += A[i * M_SIZE + j] * x[j];
+        }
+        checkSol[i] = value - b[i];
     }
 }
 
 
 double* solution(const double *A, const double *b, const double normB){
-    static const double e = 1e-6;
+    static const double e = 1e-5;
     double *x = (double*)calloc(M_SIZE, sizeof(double));
     double checkSol[M_SIZE];
     do {
@@ -51,11 +60,9 @@ void initMatrixAndB(double *A, double *b){
         for (int j = 0; j < M_SIZE; ++j) {
             A[i * M_SIZE + j] = (i == j) ? 2.0 : 1.0;
         }
-    }
-
-    for (int i = 0; i < M_SIZE; ++i) {
         u[i] = sin((2 * PI * i) / M_SIZE);
-    }
+        printf("%lf ", u[i]);
+    } putchar('\n');
 
     for (int i = 0; i < M_SIZE; ++i) {
         b[i] = 0.0;
