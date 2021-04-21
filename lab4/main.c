@@ -11,25 +11,28 @@ const double a = 1e5;
 
 
 
-void sendBoundaries(const double *phi, double *upperBoundary, double *lowerBoundary, const int DimX, const int DimY, const int DimZ, const int size, const int rank){
-    MPI_Request reqs[2], reqr[2];
+void waitEndOfCommunication(MPI_Request *reqr, MPI_Request *reqs) {
+     MPI_Wait(&reqs[0], MPI_STATUS_IGNORE);
+     MPI_Wait(&reqs[0], MPI_STATUS_IGNORE);
+     MPI_Wait(&reqs[1], MPI_STATUS_IGNORE);
+     MPI_Wait(&reqr[1], MPI_STATUS_IGNORE);
+}
+
+
+void sendBoundaries(const double *phi, double *upperBoundary, double *lowerBoundary, const int DimX, const int DimY, const int DimZ, const int size, const int rank, MPI_Request *reqs, MPI_Request *reqr){
     const int numNextProc = (rank + 1) % size;
     const int numPrevProc = (rank + size - 1) % size;
     memcpy(upperBoundary, phi+DimY*DimZ*DimZ, sizeof(double)*DimX*DimY);
     memcpy(lowerBoundary, phi, sizeof(double)*DimX*DimY);
     MPI_Isend(lowerBoundary, DimX*DimY, MPI_DOUBLE, numPrevProc, 123, MPI_COMM_WORLD, &reqs[0]);
     MPI_Irecv(upperBoundary, DimX*DimY, MPI_DOUBLE, numNextProc, 123, MPI_COMM_WORLD, &reqr[0]);
-   // MPI_Wait(&reqs[0], MPI_STATUS_IGNORE);
-   // MPI_Wait(&reqs[0], MPI_STATUS_IGNORE);
     MPI_Isend(upperBoundary, DimX*DimY, MPI_DOUBLE, numNextProc, 123, MPI_COMM_WORLD, &reqs[1]);
     MPI_Irecv(lowerBoundary, DimX*DimY, MPI_DOUBLE,  numPrevProc, 123, MPI_COMM_WORLD, &reqr[1]);
-   // MPI_Wait(&reqs[1], MPI_STATUS_IGNORE);
-   // MPI_Wait(&reqr[1], MPI_STATUS_IGNORE);
 }
 
 
-void cmp(double *op1, const double op2){
-    *op1 < op2 ? *op1 = op2 : *op1;
+void cmpOnLess(double *op1, const double op2){
+    *op1 = *op1 < op2 ? *op1 : op2;
 }
 
 
@@ -44,16 +47,16 @@ double iterateValueOnBoundaries(double *phi, const double *rho, const double *up
             const int nextIndexJ = (j + 1) % DimY;
             const int prevIndexJ = (j + DimY - 1) % DimY;
             // calculations the lower bound
-           resultOfCalculations = (((phi[nextIndexI + DimY * j] - phi[prevIndexI + DimY * j]) / hx * hx +
-                                (phi[i + DimY * nextIndexJ] - phi[i + DimY * prevIndexJ]) / hy * hy +
-                                (phi[i + DimY * (j + DimZ)] - lowerBoundary[i + DimY * j]  / hz * hz) - rho[i + DimY * j])) / divider;
-            cmp(&maxDif, fabs(phi[i + DimY*j] - resultOfCalculations));
+           resultOfCalculations = ((phi[nextIndexI + DimY * j] - phi[prevIndexI + DimY * j]) / (hx * hx) +
+                                (phi[i + DimY * nextIndexJ] - phi[i + DimY * prevIndexJ]) / (hy * hy) +
+                                (phi[i + DimY * (j + DimZ)] - lowerBoundary[i + DimY * j])  / (hz * hz) - rho[i + DimY * j]) / divider;
+            cmpOnLess(&maxDif, fabs(phi[i + DimY*j] - resultOfCalculations));
             phi[i + DimY*j] = resultOfCalculations;
             // calculations the higher bound
-           resultOfCalculations =  (((phi[nextIndexI + DimY * (j + DimZ * DimZ)] - phi[prevIndexI + DimY * (j + DimZ * DimZ)]) / hx * hx +
-                                                 (phi[i + DimY * (nextIndexJ + DimZ * DimZ)] - phi[i + DimY * (prevIndexJ + DimZ * DimZ)]) / hy * hy +
-                                                 (upperBoundary[i + DimY * j] - phi[i + DimY * (j + DimZ * (DimZ-1))]) / hz * hz)  - rho[i + DimY * (j + DimZ * DimZ)]) / divider;
-           cmp(&maxDif, fabs( phi[i + DimY * (j + DimZ*DimZ)] - resultOfCalculations));
+           resultOfCalculations =  ((phi[nextIndexI + DimY * (j + DimZ * DimZ)] - phi[prevIndexI + DimY * (j + DimZ * DimZ)]) / (hx * hx) +
+                                                 (phi[i + DimY * (nextIndexJ + DimZ * DimZ)] - phi[i + DimY * (prevIndexJ + DimZ * DimZ)]) / (hy * hy) +
+                                                 (upperBoundary[i + DimY * j] - phi[i + DimY * (j + DimZ * (DimZ-1))]) / (hz * hz)  - rho[i + DimY * (j + DimZ * DimZ)]) / divider;
+           cmpOnLess(&maxDif, fabs( phi[i + DimY * (j + DimZ*DimZ)] - resultOfCalculations));
            phi[i + DimY * (j + DimZ*DimZ)] = resultOfCalculations;
         }
     }
@@ -71,11 +74,11 @@ double iterateValueInsideArea(double *phi, const double *rho, const int DimX, co
         for (int j = 0; j < DimY; ++j){
             const int nextIndexJ = (j + 1) % DimY;
             const int prevIndexJ = (j + DimY - 1) % DimY;
-            for (int k = 1; k < DimZ - 1; ++k){
-                resultOfCalculations = (((phi[nextIndexI + DimY * (j + DimZ * k)] - phi [prevIndexI + DimY * (j + DimZ * k)]) / hx*hx +
-                        (phi[i + DimY * (nextIndexJ + DimZ * k)] - phi[i + DimY * (prevIndexJ + DimZ * k)]) / hy * hy +
-                        (phi[i + DimY * (j + DimZ * (k+1))] - phi[i + DimY * (j + DimZ * (k-1))]) / hz * hz) - rho[i + DimY * (j + DimZ * k)]) / divider;
-                cmp(&maxDif, fabs(phi[i + DimY * (j + DimZ * k)] - resultOfCalculations));
+            for (int k = 1; k < DimZ; ++k){
+                resultOfCalculations = ((phi[nextIndexI + DimY * (j + DimZ * k)] - phi [prevIndexI + DimY * (j + DimZ * k)]) / (hx * hx) +
+                        (phi[i + DimY * (nextIndexJ + DimZ * k)] - phi[i + DimY * (prevIndexJ + DimZ * k)]) / (hy * hy) +
+                        (phi[i + DimY * (j + DimZ * (k+1))] - phi[i + DimY * (j + DimZ * (k-1))]) / (hz * hz) - rho[i + DimY * (j + DimZ * k)]) / divider;
+                cmpOnLess(&maxDif, fabs(phi[i + DimY * (j + DimZ * k)] - resultOfCalculations));
                 phi[i + DimY * (j + DimZ * k)] = resultOfCalculations;
             }
         }
@@ -120,6 +123,7 @@ int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Request reqs[2], reqr[2];
     calculatingSizeOfCell(&DimX, &DimY, &DimZ, &hx, &hy, &hz, size);
     double *rho = (double*)malloc(sizeof(double) * DimX * DimY * DimZ);
     double *phi = (double*) malloc(sizeof(double) * DimX * DimY * DimZ);
@@ -128,16 +132,19 @@ int main(int argc, char** argv) {
     initFunctions(phi, rho, DimX, DimY, DimZ);
     while (true) {
         maxOutside = iterateValueOnBoundaries(phi, rho, upperBoundary, lowerBoundary, DimX, DimY, DimZ, hx, hy, hz);
-        //sendBoundaries(phi, upperBoundary, lowerBoundary, DimX, DimY, DimZ, size, rank);
+        sendBoundaries(phi, upperBoundary, lowerBoundary, DimX, DimY, DimZ, size, rank, reqs, reqr);
         maxInside = iterateValueInsideArea(phi, rho, DimX, DimY, DimZ, hx, hy, hz);
         calculateRho(phi, rho, DimX, DimY, DimZ);
         localMax = maxInside < maxOutside? maxInside : maxOutside;
         MPI_Allreduce(&localMax, &globalMax, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+        waitEndOfCommunication(reqr, reqs);
+        if (rank == 0){
+            printf("%lf %lf %lf\n", maxOutside, maxInside, globalMax);
+        }
         if (globalMax < EPSILON)
             break;
-        //wait
     }
-    int counter = 0;
+    /*int counter = 0;
     if (rank == 1) {
         for (int i = 0; i < DimX; ++i){
             for (int j = 0; j < DimY; ++j){
@@ -149,7 +156,7 @@ int main(int argc, char** argv) {
             }
         }
         printf("%d\n", counter);
-    }
+    }*/
     free(rho);
     free(phi);
     free(upperBoundary);
