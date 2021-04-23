@@ -192,7 +192,7 @@ int main(int argc, char **argv) {
     while (true) {
         maxOutsideDif = calculatePhiOnBoundaries(phi, rho, upperBoundary, lowerBoundary, hx, hy, hz, rank, size);
         sendBoundaries(phi, upperBoundary, lowerBoundary, reqs, reqr, rank, size);
-        if (DimZ == 1) {
+        if (DimZ > 1) {
             maxInsideDif = calculatePhiInsideArea(phi, rho, hx, hy, hz);
         } else {
             maxInsideDif = 0.0;
