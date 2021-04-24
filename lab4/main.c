@@ -101,17 +101,6 @@ long double calculatePhiInsideArea(long double *phi, const long double hx, const
 }
 
 
-void initFunctionsInside(long double *phi) {
-    for (int k = 1; k < DimZ - 1; ++k){
-        for (int j = 1; j < DimY - 1; ++j){
-            for (int i = 1; i < DimX - 1; ++i){
-                phi[i + DimY * (j + DimX * k )] = 0.0;
-            }
-        }
-    }
-}
-
-
 void calculateValueOnBoundaries(long double *phi, const long double hx, const long double hy, const long double hz, const int rank, const int size){
     for (int k = 0; k < DimZ; ++k){
         for (int i = 0; i < DimX; ++i) {
@@ -168,14 +157,12 @@ int main(int argc, char **argv) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Request reqs[2], reqr[2];
     calculatingSizeOfCell(&hx, &hy, &hz, size);
-    long double *phi = (long double*) malloc(sizeof(long double) * DimX * DimY * DimZ);
+    long double *phi = (long double*)calloc(DimX * DimY * DimZ, sizeof(long double));
     long double *upperBoundary = (long double*)malloc(sizeof(long double) * DimX * DimY);
     long double *lowerBoundary = (long double*)malloc(sizeof(long double) * DimX * DimY);
 
+    //initialize all boundaries and send lower and upper
     calculateValueOnBoundaries(phi, hx, hy, hz, rank, size);
-    initFunctionsInside(phi);
-
-    //initialize upper and lower boundaries
     sendBoundaries(phi, upperBoundary, lowerBoundary, reqs, reqr, rank, size);
     waitEndOfCommunication(reqr, reqs, rank, size);
 
