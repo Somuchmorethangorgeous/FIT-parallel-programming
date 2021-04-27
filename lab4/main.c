@@ -48,29 +48,37 @@ long double calculatePhiAtPoint(const long double offsetX, const long double off
 }
 
 
+long double calculateApproximationAtPoint(const long double *phi, const long double *boundary, const int i, const int j, const int k, const long double hx, const long double hy, const long double hz){
+    const long double divider = 2.0 / (hx * hx) + 2.0 / (hy * hy) + 2.0 / (hz * hz) + a; // coef
+    if (boundary != NULL) {
+        return ((phi[i + 1 + DimY * (j + DimX * k)] + phi[i - 1 + DimY * (j + DimX * k)]) / (hx * hx) +
+                (phi[i + DimY * (j + 1 + DimX * k)] + phi[i + DimY * (j - 1 + DimX * k)]) / (hy * hy) +
+                (phi[i + DimY * (j + DimX * (k == 0 ? k : k - 1))] + boundary[i + DimY * j]) / (hz * hz) +
+                a * phi[i + DimY * j] - 6.0) / divider;
+    }
+    return ((phi[i+1 + DimY * (j + DimX * k)] + phi[i-1 + DimY * (j + DimX * k)]) / (hx * hx) +
+           (phi[i + DimY * (j+1 + DimX * k)] + phi[i + DimY * (j-1 + DimX * k)]) / (hy * hy) +
+           (phi[i + DimY * (j + DimX * (k + 1))] + phi[i + DimY * (j + DimX * (k - 1))]) / (hz * hz) +
+           a * phi[i + DimY * (j + DimX * k)] - 6.0) / divider;
+}
+
+
 long double calculatePhiOnBoundaries(long double *phi, const long double *upperBoundary, const long double *lowerBoundary,
                                      const long double hx, const long double hy, const long double hz, const int rank, const int size){
-    const long double divider = 2.0 / (hx * hx) + 2.0 / (hy * hy) + 2.0 / (hz * hz) + a; // coef
     long double maxDif = 0.0;
     for (int j = 1; j < DimY-1; ++j){
         for (int i = 1; i < DimX-1; ++i){
             long double difference, resultOfCalculations;
             // calculate the lower bound
             if (rank !=  0) {
-                resultOfCalculations = ((phi[i+1 + DimY * j] + phi[i-1 + DimY * j]) / (hx * hx) +
-                                        (phi[i + DimY * (j+1)] + phi[i + DimY * (j-1)]) / (hy * hy) +
-                                        (phi[i + DimY * (j + DimX)] + lowerBoundary[i + DimY * j]) / (hz * hz) +
-                                        a * phi[i + DimY * j] - 6.0) / divider;
+                resultOfCalculations = calculateApproximationAtPoint(phi, lowerBoundary, i, j, 0, hx, hy, hz);
                 difference = fabsl(resultOfCalculations - phi[i + DimY * j]);
                 cmpOnMore(&maxDif, difference);
                 phi[i + DimY * j] = resultOfCalculations;
             }
             // calculate the upper bound
             if (rank != size - 1) {
-                resultOfCalculations = ((phi[i+1 + DimY * (j + DimX * (DimZ - 1))] + phi[i-1 + DimY * (j + DimX * (DimZ - 1))]) / (hx * hx) +
-                                        (phi[i + DimY * (j+1 + DimX * (DimZ - 1))] + phi[i + DimY * (j-1 + DimX * (DimZ - 1))]) / (hy * hy) +
-                                        (upperBoundary[i + DimY * j] + phi[i + DimY * (j + DimX * (DimZ - 2))]) / (hz * hz) +
-                                        a * phi[i + DimY * (j + DimX * (DimZ - 1))] - 6.0) / divider;
+                resultOfCalculations = calculateApproximationAtPoint(phi, upperBoundary, i, j, DimZ-1, hx, hy, hz);
                 difference = fabsl(resultOfCalculations - phi[i + DimY * (j + DimX * (DimZ - 1))]);
                 cmpOnMore(&maxDif, difference);
                 phi[i + DimY * (j + DimX * (DimZ - 1))] = resultOfCalculations;
@@ -82,15 +90,11 @@ long double calculatePhiOnBoundaries(long double *phi, const long double *upperB
 
 
 long double calculatePhiInsideArea(long double *phi, const long double hx, const long double hy, const long double hz) {
-    const long double divider = 2.0 / (hx * hx) + 2.0 / (hy * hy) + 2.0 / (hz * hz) + a; // coef
     long double maxDif = 0.0;
     for (int k = 1; k < DimZ - 1; ++k) {
         for (int j = 1; j < DimY - 1; ++j) {
             for (int i = 1; i < DimX - 1; ++i) {
-                long double resultOfCalculations = ((phi[i+1 + DimY * (j + DimX * k)] + phi[i-1 + DimY * (j + DimX * k)]) / (hx * hx) +
-                         (phi[i + DimY * (j+1 + DimX * k)] + phi[i + DimY * (j-1 + DimX * k)]) / (hy * hy) +
-                         (phi[i + DimY * (j + DimX * (k + 1))] + phi[i + DimY * (j + DimX * (k - 1))]) / (hz * hz) +
-                          a * phi[i + DimY * (j + DimX * k)] - 6.0) / divider;
+                long double resultOfCalculations = calculateApproximationAtPoint(phi, NULL, i, j, k, hx, hy, hz);
                 long double difference = fabsl(resultOfCalculations - phi[i + DimY * (j + DimX * k)]);
                 cmpOnMore(&maxDif, difference);
                 phi[i + DimY * (j + DimX * k)] = resultOfCalculations;
@@ -190,7 +194,7 @@ int main(int argc, char **argv) {
         }
     }
     MPI_Allreduce(&localDelta, &globalDelta, 1, MPI_LONG_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-
+    
     free(phi);
     free(upperBoundary);
     free(lowerBoundary);
