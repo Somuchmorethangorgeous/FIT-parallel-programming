@@ -50,16 +50,16 @@ long double calculatePhiAtPoint(const long double offsetX, const long double off
 
 long double calculateApproximationAtPoint(const long double *phi, const long double *boundary, const int i, const int j, const int k, const long double hx, const long double hy, const long double hz){
     const long double divider = 2.0 / (hx * hx) + 2.0 / (hy * hy) + 2.0 / (hz * hz) + a; // coef
+    const long double firstTerm = (phi[i + 1 + DimY * (j + DimX * k)] + phi[i - 1 + DimY * (j + DimX * k)]) / (hx * hx); // approx by x
+    const long double secondTerm = (phi[i + DimY * (j + 1 + DimX * k)] + phi[i + DimY * (j - 1 + DimX * k)]) / (hy * hy); // approx by y
+    long double thirdTerm; // approx by z
+    const long double rhoAtPoint = 6.0 - a * phi[i + DimY * (j + DimX * k)]; // value of rho in x(i,j,k)
     if (boundary != NULL) {
-        return ((phi[i + 1 + DimY * (j + DimX * k)] + phi[i - 1 + DimY * (j + DimX * k)]) / (hx * hx) +
-                (phi[i + DimY * (j + 1 + DimX * k)] + phi[i + DimY * (j - 1 + DimX * k)]) / (hy * hy) +
-                (phi[i + DimY * (j + DimX * (k == 0 ? k : k - 1))] + boundary[i + DimY * j]) / (hz * hz) +
-                a * phi[i + DimY * j] - 6.0) / divider;
+        thirdTerm = (phi[i + DimY * (j + DimX * (k == 0 ? k + 1 : k - 1))] + boundary[i + DimY * j]) / (hz * hz);
+    } else {
+        thirdTerm = (phi[i + DimY * (j + DimX * (k + 1))] + phi[i + DimY * (j + DimX * (k - 1))]) / (hz * hz);
     }
-    return ((phi[i+1 + DimY * (j + DimX * k)] + phi[i-1 + DimY * (j + DimX * k)]) / (hx * hx) +
-           (phi[i + DimY * (j+1 + DimX * k)] + phi[i + DimY * (j-1 + DimX * k)]) / (hy * hy) +
-           (phi[i + DimY * (j + DimX * (k + 1))] + phi[i + DimY * (j + DimX * (k - 1))]) / (hz * hz) +
-           a * phi[i + DimY * (j + DimX * k)] - 6.0) / divider;
+    return (firstTerm + secondTerm + thirdTerm - rhoAtPoint) / divider;
 }
 
 
@@ -194,7 +194,7 @@ int main(int argc, char **argv) {
         }
     }
     MPI_Allreduce(&localDelta, &globalDelta, 1, MPI_LONG_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-    
+
     free(phi);
     free(upperBoundary);
     free(lowerBoundary);
