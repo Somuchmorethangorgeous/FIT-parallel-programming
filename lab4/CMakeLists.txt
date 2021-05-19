@@ -9,5 +9,3 @@ include_directories(${MPI_INCLUDE_PATH})
 set(CMAKE_C_COMPILER mpicc)
 
 add_executable(lab4 main.c)
-#target_link_libraries(lab1_v1 m)
-#target_link_libraries(lab1_v2 m)
