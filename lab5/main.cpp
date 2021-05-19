@@ -5,6 +5,7 @@
 
 #define TOTAL_NUMBER_ITER_PER_PROC 4
 #define TASKS_LEFT_TO_DO 5
+#define NO_TASKS_FLAG -1
 #define REQUEST_TAG 333
 #define RESPONSE_TAG 33
 #define SEND_TASK_TAG 3
@@ -21,6 +22,7 @@ struct Task{
     int repeatNum = 0;
 
     explicit Task(int numberOftaks) : repeatNum(numberOftaks){}
+    Task() : Task(0){};
 };
 
 std::vector<Task> taskList;
@@ -47,20 +49,46 @@ void doWork(Task task){
 }
 
 
+int receiveTasks(int fromProc){
+    if (fromProc == rank){
+        return 0;
+    }
+    int availabilityFlag = 1;
+    MPI_Sendrecv(&availabilityFlag, 1, MPI_INT, fromProc, REQUEST_TAG, MPI_IN_PLACE, 1, MPI_INT, fromProc, RESPONSE_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    if (!availabilityFlag){
+        return 0;
+    }
+    Task receivedTask;
+    MPI_Recv(&receivedTask, sizeof(receivedTask), MPI_BYTE, fromProc, SEND_TASK_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    pthread_mutex_lock(&taskMutex);
+    taskList.push_back(receivedTask);
+    pthread_mutex_unlock(&taskMutex);
+    return availabilityFlag;
+}
+
+
 void* count(void* data){
+    int shiftProc;
     double start, end;
-    for(globalIter = 0; globalIter < TOTAL_NUMBER_ITER_PER_PROC; ++globalIter, curTask = 0){
+    for(globalIter = 0; globalIter < TOTAL_NUMBER_ITER_PER_PROC; ++globalIter, shiftProc = curTask = 0){
         pthread_mutex_lock(&taskMutex);
         initTaskList();
 
         start = MPI_Wtime();
-        for(;curTask < taskList.size();++curTask){
+        while (shiftProc < size) {
+            for (; curTask < taskList.size(); ++curTask) {
+                pthread_mutex_unlock(&taskMutex);
+                doWork(taskList[curTask]);
+                pthread_mutex_lock(&taskMutex);
+            }
+
             pthread_mutex_unlock(&taskMutex);
-            doWork(taskList[curTask]);
-            pthread_mutex_lock(&taskMutex);
+            int requestProc = (rank + shiftProc) % size;
+            if (receiveTasks(requestProc) == 0){
+                ++shiftProc;
+            }
         }
 
-        pthread_mutex_unlock(&taskMutex);
         end = MPI_Wtime();
         std::cout << "proc: " << rank << " time: "  << end - start << " at iter: " << globalIter << " tasks implemented: " << curTask << std::endl;
 
@@ -72,6 +100,7 @@ void* count(void* data){
     }
     return nullptr;
 }
+
 
 void* unloadOfTasks(void* data){
     int availabilityFlag;
@@ -89,12 +118,16 @@ void* unloadOfTasks(void* data){
             continue;
         }
 
+        pthread_mutex_lock(&taskMutex);
         Task taskToSend = taskList.back();
         taskList.pop_back();
+        pthread_mutex_unlock(&taskMutex);
+
         MPI_Send(&taskToSend, sizeof(Task), MPI_BYTE, status.MPI_SOURCE, SEND_TASK_TAG, MPI_COMM_WORLD);
     }
     return nullptr;
 }
+
 
 void initThreads(){
     pthread_attr_t attrs;
