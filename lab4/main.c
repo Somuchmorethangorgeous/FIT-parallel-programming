@@ -1,10 +1,11 @@
 #include <mpi.h>
 #include <stdlib.h>
 #include <math.h>
+#include <string.h>
+#include <stdio.h>
 
-
-const long double EPSILON = 10e-8;
-const long double a = 10e5;
+const long double EPSILON = 1e-8;
+const long double a = 1e5;
 
 const int DimX = 16;
 const int DimY = 16;
@@ -63,25 +64,23 @@ long double calculateApproximationAtPoint(const long double *phi, const long dou
 }
 
 
-long double calculatePhiOnBoundaries(long double *phi, const long double *upperBoundary, const long double *lowerBoundary,
+long double calculatePhiOnBoundaries(long double *oldValuesPhi, long double *newValuesPhi, const long double *upperBoundary, const long double *lowerBoundary,
                                      const long double hx, const long double hy, const long double hz, const int rank, const int size){
     long double maxDif = 0.0;
     for (int j = 1; j < DimY-1; ++j){
         for (int i = 1; i < DimX-1; ++i){
-            long double difference, resultOfCalculations;
+            long double differenceOfIterations;
             // calculate the lower bound
             if (rank !=  0) {
-                resultOfCalculations = calculateApproximationAtPoint(phi, lowerBoundary, i, j, 0, hx, hy, hz);
-                difference = fabsl(resultOfCalculations - phi[i + DimY * j]);
-                cmpOnMore(&maxDif, difference);
-                phi[i + DimY * j] = resultOfCalculations;
+                newValuesPhi[i + DimY * j] = calculateApproximationAtPoint(oldValuesPhi, lowerBoundary, i, j, 0, hx, hy, hz);
+                differenceOfIterations = fabsl(newValuesPhi[i + DimY * j] - oldValuesPhi[i + DimY * j]);
+                cmpOnMore(&maxDif, differenceOfIterations);
             }
             // calculate the upper bound
             if (rank != size - 1) {
-                resultOfCalculations = calculateApproximationAtPoint(phi, upperBoundary, i, j, DimZ-1, hx, hy, hz);
-                difference = fabsl(resultOfCalculations - phi[i + DimY * (j + DimX * (DimZ - 1))]);
-                cmpOnMore(&maxDif, difference);
-                phi[i + DimY * (j + DimX * (DimZ - 1))] = resultOfCalculations;
+                newValuesPhi[i + DimY * (j + DimX * (DimZ - 1))] = calculateApproximationAtPoint(oldValuesPhi, upperBoundary, i, j, DimZ-1, hx, hy, hz);
+                differenceOfIterations = fabsl(newValuesPhi[i + DimY * (j + DimX * (DimZ - 1))] - oldValuesPhi[i + DimY * (j + DimX * (DimZ - 1))]);
+                cmpOnMore(&maxDif, differenceOfIterations);
             }
         }
     }
@@ -89,15 +88,14 @@ long double calculatePhiOnBoundaries(long double *phi, const long double *upperB
 }
 
 
-long double calculatePhiInsideArea(long double *phi, const long double hx, const long double hy, const long double hz) {
+long double calculatePhiInsideArea(long double *oldValuesPhi, long double *newValuesPhi, const long double hx, const long double hy, const long double hz) {
     long double maxDif = 0.0;
     for (int k = 1; k < DimZ - 1; ++k) {
         for (int j = 1; j < DimY - 1; ++j) {
             for (int i = 1; i < DimX - 1; ++i) {
-                long double resultOfCalculations = calculateApproximationAtPoint(phi, NULL, i, j, k, hx, hy, hz);
-                long double difference = fabsl(resultOfCalculations - phi[i + DimY * (j + DimX * k)]);
-                cmpOnMore(&maxDif, difference);
-                phi[i + DimY * (j + DimX * k)] = resultOfCalculations;
+                newValuesPhi[i + DimY * (j + DimX * k)] = calculateApproximationAtPoint(oldValuesPhi, NULL, i, j, k, hx, hy, hz);
+                long double differenceOfIterations = fabsl(newValuesPhi[i + DimY * (j + DimX * k)]  - oldValuesPhi[i + DimY * (j + DimX * k)]);
+                cmpOnMore(&maxDif, differenceOfIterations);
             }
         }
     }
@@ -105,21 +103,21 @@ long double calculatePhiInsideArea(long double *phi, const long double hx, const
 }
 
 
-void calculateValueOnBoundaries(long double *phi, const long double hx, const long double hy, const long double hz, const int rank, const int size){
+void calculateValueOnBoundaries(long double *oldValuesPhi, long double *newValuesPhi, const long double hx, const long double hy, const long double hz, const int rank, const int size){
     for (int k = 0; k < DimZ; ++k){
         for (int i = 0; i < DimX; ++i) {
             // left bound
-            phi[i + DimX * DimY * k] = calculatePhiAtPoint(i * hx, 0, rank * DimZ * hz + k * hz);
+            oldValuesPhi[i + DimX * DimY * k] = newValuesPhi[i + DimX * DimY * k] = calculatePhiAtPoint(i * hx, 0, rank * DimZ * hz + k * hz);
             // right bound
-            phi[i + DimY * ((DimY - 1) + DimX * k)] = calculatePhiAtPoint(i * hx, (DimY-1) * hy, rank * DimZ * hz + k * hz);
+            oldValuesPhi[i + DimY * ((DimY - 1) + DimX * k)] = newValuesPhi[i + DimY * ((DimY - 1) + DimX * k)] = calculatePhiAtPoint(i * hx, (DimY-1) * hy, rank * DimZ * hz + k * hz);
         }
    }
    for (int k = 0; k < DimZ; ++k) {
        for (int j = 1; j < DimY - 1; ++j) {
            // back bound
-           phi[DimY * (j + DimX * k)] = calculatePhiAtPoint(0, j * hy, rank * DimZ * hz + k * hz);
+           oldValuesPhi[DimY * (j + DimX * k)] = newValuesPhi[DimY * (j + DimX * k)] = calculatePhiAtPoint(0, j * hy, rank * DimZ * hz + k * hz);
            // front bound
-           phi[(DimX - 1) + DimY * (j + DimX * k)] = calculatePhiAtPoint((DimX - 1) * hx, j * hy,
+           oldValuesPhi[(DimX - 1) + DimY * (j + DimX * k)] = newValuesPhi[(DimX - 1) + DimY * (j + DimX * k)] =  calculatePhiAtPoint((DimX - 1) * hx, j * hy,
                                                                          rank * DimZ * hz + k * hz);
        }
    }
@@ -127,7 +125,7 @@ void calculateValueOnBoundaries(long double *phi, const long double hx, const lo
     if (rank == 0) {
         for (int j = 0; j < DimY; ++j) {
             for (int i = 0; i < DimX; ++i) {
-                phi[i + DimY * j] = calculatePhiAtPoint(i * hx, j * hy, rank * DimZ * hz);
+                oldValuesPhi[i + DimY * j] = newValuesPhi[i + DimY * j] =  calculatePhiAtPoint(i * hx, j * hy, rank * DimZ * hz);
             }
         }
     }
@@ -135,7 +133,7 @@ void calculateValueOnBoundaries(long double *phi, const long double hx, const lo
     if (rank == size - 1) {
         for (int j = 0; j < DimY; ++j) {
             for (int i = 0; i < DimX; ++i) {
-                phi[i + DimY * (j + DimX * (DimZ - 1))] = calculatePhiAtPoint(i * hx, j * hy,rank * DimZ * hz + (DimZ - 1) * hz);
+                oldValuesPhi[i + DimY * (j + DimX * (DimZ - 1))] = newValuesPhi[i + DimY * (j + DimX * (DimZ - 1))] = calculatePhiAtPoint(i * hx, j * hy,rank * DimZ * hz + (DimZ - 1) * hz);
             }
         }
     }
@@ -161,41 +159,45 @@ int main(int argc, char **argv) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Request reqs[2], reqr[2];
     calculatingSizeOfCell(&hx, &hy, &hz, size);
-    long double *phi = (long double*)calloc(DimX * DimY * DimZ, sizeof(long double));
+    long double *oldValuesPhi = (long double*)calloc(DimX * DimY * DimZ, sizeof(long double));
+    long double *newValuesPhi = (long double*) malloc(DimX * DimY * DimZ * sizeof(long double));
     long double *upperBoundary = (long double*)malloc(sizeof(long double) * DimX * DimY);
     long double *lowerBoundary = (long double*)malloc(sizeof(long double) * DimX * DimY);
 
     //initialize all boundaries and send lower and upper
-    calculateValueOnBoundaries(phi, hx, hy, hz, rank, size);
-    sendBoundaries(phi, upperBoundary, lowerBoundary, reqs, reqr, rank, size);
+    calculateValueOnBoundaries(oldValuesPhi, newValuesPhi, hx, hy, hz, rank, size);
+    sendBoundaries(oldValuesPhi, upperBoundary, lowerBoundary, reqs, reqr, rank, size);
     waitEndOfCommunication(reqr, reqs, rank, size);
 
-    while (globalMax >= EPSILON) {
-        maxOutsideDif = calculatePhiOnBoundaries(phi, upperBoundary, lowerBoundary, hx, hy, hz, rank, size);
-        sendBoundaries(phi, upperBoundary, lowerBoundary, reqs, reqr, rank, size);
-        if (DimZ > 2) {
-            maxInsideDif = calculatePhiInsideArea(phi, hx, hy, hz);
-        } else {
-            maxInsideDif = maxOutsideDif;
-        }
-        localMax = maxInsideDif > maxOutsideDif ? maxInsideDif : maxOutsideDif;
-        MPI_Allreduce(&localMax, &globalMax, 1, MPI_LONG_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-        waitEndOfCommunication(reqr, reqs, rank, size);
-    }
+     while (globalMax >= EPSILON) {
+         maxOutsideDif = calculatePhiOnBoundaries(oldValuesPhi, newValuesPhi, upperBoundary, lowerBoundary, hx, hy, hz, rank, size);
+         sendBoundaries(newValuesPhi, upperBoundary, lowerBoundary, reqs, reqr, rank, size);
+         if (DimZ > 2) {
+             maxInsideDif = calculatePhiInsideArea(oldValuesPhi, newValuesPhi, hx, hy, hz);
+         } else {
+             maxInsideDif = maxOutsideDif;
+         }
+         localMax = maxInsideDif > maxOutsideDif ? maxInsideDif : maxOutsideDif;
+         MPI_Allreduce(&localMax, &globalMax, 1, MPI_LONG_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+         memcpy(oldValuesPhi, newValuesPhi, DimX * DimY * DimZ * sizeof(long double));
+         waitEndOfCommunication(reqr, reqs, rank, size);
+     }
 
-   //calculate delta
-    for(int k = 0; k < DimZ; ++k) {
-        for (int j = 0; j < DimY; ++j) {
-            for (int i = 0; i < DimX; ++i) {
-                if (fabsl(phi[i + DimY * (j + DimX * k)] - calculatePhiAtPoint(i * hx, j * hy, rank * DimZ * hz + k * hz)) > localDelta){
-                    localDelta = fabsl(phi[i + DimY * (j + DimX * k)] - calculatePhiAtPoint(i * hx, j * hy, rank * DimZ * hz + k * hz));
-                }
-            }
-        }
-    }
-    MPI_Allreduce(&localDelta, &globalDelta, 1, MPI_LONG_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    //calculate delta
+     for(int k = 0; k < DimZ; ++k) {
+         for (int j = 0; j < DimY; ++j) {
+             for (int i = 0; i < DimX; ++i) {
+                 if (fabsl(oldValuesPhi[i + DimY * (j + DimX * k)] - calculatePhiAtPoint(i * hx, j * hy, rank * DimZ * hz + k * hz)) > localDelta){
+                     localDelta = fabsl(oldValuesPhi[i + DimY * (j + DimX * k)] - calculatePhiAtPoint(i * hx, j * hy, rank * DimZ * hz + k * hz));
+                 }
+             }
+         }
+     }
+     MPI_Allreduce(&localDelta, &globalDelta, 1, MPI_LONG_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
 
-    free(phi);
+
+    free(oldValuesPhi);
+    free(newValuesPhi);
     free(upperBoundary);
     free(lowerBoundary);
     MPI_Finalize();
