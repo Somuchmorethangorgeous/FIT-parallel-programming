@@ -1,33 +1,7 @@
 #include <iostream>
 #include <mpi.h>
-#include <cmath>
-#include <vector>
-
-#define TOTAL_GLOBAL_ITER 10
-#define ITER_PER_PROC 1000
-#define TASKS_LEFT_TO_DO 5
-#define NO_TASKS_FLAG -1
-#define REQUEST_TAG 333
-#define RESPONSE_TAG 33
-#define SEND_TASK_TAG 3
-
-
-int size, rank;
-int curTask;
-int globalIter;
-int tasksSend, tasksReceived;
-double globalRes;
-
-pthread_mutex_t taskMutex;
-
-struct Task{
-    int repeatNum = 0;
-
-    explicit Task(int numberOftaks) : repeatNum(numberOftaks){}
-    Task() : Task(0){};
-};
-
-std::vector<Task> taskList;
+#include "balance/balance.h"
+#include "execution/execution.h"
 
 
 void errorInProgramm(){
@@ -36,118 +10,12 @@ void errorInProgramm(){
 }
 
 
-void initTaskList(){
-    taskList.clear();
-    for (int i = 0; i < ITER_PER_PROC; ++i){
-        taskList.emplace_back(abs(rank - (globalIter % size)));
-    }
-}
-
-
-void doWork(Task task){
-    for (int i = 0; i < task.repeatNum; ++i){
-        globalRes += sqrt(i);
-    }
-}
-
-
-int receiveTasks(int fromProc){
-    if (fromProc == rank){
-        return 0;
-    }
-    int availabilityFlag = 1;
-
-    MPI_Send(&availabilityFlag,1,MPI_INT,fromProc, REQUEST_TAG, MPI_COMM_WORLD);
-    MPI_Recv(&availabilityFlag,1,MPI_INT,fromProc, RESPONSE_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-    if (!availabilityFlag){
-        return 0;
-    }
-
-    Task receivedTask;
-    MPI_Recv(&receivedTask, sizeof(receivedTask), MPI_BYTE, fromProc, SEND_TASK_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    pthread_mutex_lock(&taskMutex);
-    taskList.push_back(receivedTask);
-    pthread_mutex_unlock(&taskMutex);
-    ++tasksReceived;
-    return availabilityFlag;
-}
-
-
-void* count(void* data){
-    int shiftProc;
-    double start, end;
-    for(globalIter = 0; globalIter < TOTAL_GLOBAL_ITER; ++globalIter, shiftProc = curTask = 0){
-        tasksReceived = tasksSend = 0;
-        pthread_mutex_lock(&taskMutex);
-        initTaskList();
-
-        start = MPI_Wtime();
-        while (shiftProc < size) {
-            for (; curTask < taskList.size(); ++curTask) {
-                pthread_mutex_unlock(&taskMutex);
-                doWork(taskList[curTask]);
-                pthread_mutex_lock(&taskMutex);
-            }
-
-            pthread_mutex_unlock(&taskMutex);
-            int requestProc = (rank + shiftProc) % size;
-            if (receiveTasks(requestProc) == 0){
-                ++shiftProc;
-            }
-            pthread_mutex_lock(&taskMutex);
-        }
-        pthread_mutex_unlock(&taskMutex);
-
-        end = MPI_Wtime();
-        std::cout << "proc: " << rank << " time: "  << end - start << " at iter: " << globalIter << " tasks implemented: " << curTask <<  " tasks received: " << tasksReceived << " tasks send: " << tasksSend << std::endl;
-
-        MPI_Barrier(MPI_COMM_WORLD);
-        if (rank == 0){
-            std::cout << std::endl;
-        }
-    }
-    int endFlag = NO_TASKS_FLAG;
-    MPI_Send(&endFlag, 1, MPI_INT, rank, REQUEST_TAG, MPI_COMM_WORLD);
-    return nullptr;
-}
-
-
-void* unloadOfTasks(void* data){
-    int availabilityFlag;
-    MPI_Status status;
-    while (globalIter < TOTAL_GLOBAL_ITER){
-        MPI_Recv(&availabilityFlag, 1, MPI_INT, MPI_ANY_SOURCE, REQUEST_TAG, MPI_COMM_WORLD, &status);
-        if(availabilityFlag == NO_TASKS_FLAG){
-            return nullptr;
-        }
-        pthread_mutex_lock(&taskMutex);
-        if(curTask > taskList.size() - TASKS_LEFT_TO_DO){
-            availabilityFlag = 0;
-        }
-        pthread_mutex_unlock(&taskMutex);
-
-        MPI_Send(&availabilityFlag, 1, MPI_INT, status.MPI_SOURCE, RESPONSE_TAG, MPI_COMM_WORLD);
-        if(!availabilityFlag){
-            continue;
-        }
-
-        pthread_mutex_lock(&taskMutex);
-        Task taskToSend = taskList.back();
-        taskList.pop_back();
-        pthread_mutex_unlock(&taskMutex);
-
-        MPI_Send(&taskToSend, sizeof(Task), MPI_BYTE, status.MPI_SOURCE, SEND_TASK_TAG, MPI_COMM_WORLD);
-        ++tasksSend;
-    }
-    return nullptr;
-}
-
-
-void initThreads(){
+void initThreads(ProcInfo& procInfo){
     pthread_attr_t attrs;
     pthread_t executorThread;
     pthread_t receiverThread;
+    WorkingInfo workingInfo;
+    auto* tArgs = new thread_args(&procInfo, &workingInfo);
 
     if(pthread_attr_init(&attrs)){
         std::cerr << "Cannot initialize attributes" << std::endl;
@@ -155,18 +23,18 @@ void initThreads(){
     }
 
     if(pthread_attr_setdetachstate(&attrs, PTHREAD_CREATE_JOINABLE)){
-        std::cerr <<"Error in setting attributes" << std::endl;
+        std::cerr << "Error in setting attributes" << std::endl;
         errorInProgramm();
     }
 
-    pthread_mutex_init(&taskMutex, nullptr);
+    pthread_mutex_init(&workingInfo.taskMutex, nullptr);
 
-    if(pthread_create(&receiverThread, nullptr, unloadOfTasks, nullptr)){
+    if(pthread_create(&receiverThread, nullptr, unloadOfTasks, (void*)tArgs)){
         std::cerr << "Error in creating thread" << std::endl;
         errorInProgramm();
     }
 
-    if(pthread_create(&executorThread, nullptr, count, nullptr)){
+    if(pthread_create(&executorThread, nullptr, count, (void*)tArgs)){
         std::cerr << "Error in creating thread" << std::endl;
         errorInProgramm();
     }
@@ -181,9 +49,8 @@ void initThreads(){
         errorInProgramm();
     }
 
-
     pthread_attr_destroy(&attrs);
-    pthread_mutex_destroy(&taskMutex);
+    pthread_mutex_destroy(&workingInfo.taskMutex);
 }
 
 
@@ -196,10 +63,11 @@ int main(int argc, char **argv) {
         return -1;
     }
 
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &size);
+    ProcInfo procInfo;
+    MPI_Comm_rank(MPI_COMM_WORLD, &procInfo.rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &procInfo.size);
 
-    initThreads();
+    initThreads(procInfo);
 
     MPI_Finalize();
 
