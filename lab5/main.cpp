@@ -29,12 +29,12 @@ void initThreads(ProcInfo& procInfo){
 
     pthread_mutex_init(&workingInfo.taskMutex, nullptr);
 
-    if(pthread_create(&receiverThread, nullptr, unloadOfTasks, (void*)tArgs)){
+    if(pthread_create(&receiverThread, &attrs, unloadOfTasks, (void*)tArgs)){
         std::cerr << "Error in creating thread" << std::endl;
         errorInProgramm();
     }
 
-    if(pthread_create(&executorThread, nullptr, count, (void*)tArgs)){
+    if(pthread_create(&executorThread, &attrs, count, (void*)tArgs)){
         std::cerr << "Error in creating thread" << std::endl;
         errorInProgramm();
     }
@@ -51,6 +51,7 @@ void initThreads(ProcInfo& procInfo){
 
     pthread_attr_destroy(&attrs);
     pthread_mutex_destroy(&workingInfo.taskMutex);
+    delete tArgs;
 }
 
 
