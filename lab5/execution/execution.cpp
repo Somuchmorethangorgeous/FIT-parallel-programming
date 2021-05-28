@@ -48,6 +48,8 @@ void* count(void* data){
 
     for(workingInfo->globalIter = 0; workingInfo->globalIter < TOTAL_GLOBAL_ITER; ++workingInfo->globalIter, shiftProc = workingInfo->curTask = 0){
         workingInfo->tasksReceived = workingInfo->tasksSend = 0;
+
+        pthread_mutex_lock(&workingInfo->taskMutex);
         initTaskList(procInfo, workingInfo);
 
         while (shiftProc < procInfo->size){
@@ -58,14 +60,23 @@ void* count(void* data){
             }
 
             pthread_mutex_unlock(&workingInfo->taskMutex);
-            int requestProc = (procInfo->rank + shiftProc) % procInfo->size;
-            if (receiveTasks(requestProc, procInfo, workingInfo) == 0){
-                ++shiftProc;
-            }
-            pthread_mutex_lock(&workingInfo->taskMutex);
-        }
-        pthread_mutex_unlock(&workingInfo->taskMutex);
 
+            for (; shiftProc < procInfo->size; ++shiftProc){
+                int requestProc = (procInfo->rank + shiftProc) % procInfo->size;
+                if (receiveTasks(requestProc, procInfo, workingInfo)){
+                    pthread_mutex_lock(&workingInfo->taskMutex);
+                    break;
+                }
+            }
+            if (shiftProc == procInfo->size){
+                break;
+            }
+        }
+#ifdef DEBUG_INFO
+        if (procInfo-> rank == 0){
+            std::cout << "proc: " << procInfo->rank << " at iter: " <<  workingInfo->globalIter << " tasks received: " <<  workingInfo->tasksReceived << " tasks implemented: " << workingInfo->curTask  << " tasks send: " << workingInfo->tasksSend << std::endl;
+        }
+#endif
         MPI_Barrier(MPI_COMM_WORLD);
     }
 
