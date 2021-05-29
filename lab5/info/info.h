@@ -2,8 +2,8 @@
 #define LAB5_INFO_H
 
 #include <vector>
-#define TOTAL_GLOBAL_ITER 10
-#define ITER_PER_PROC 1000
+#define TOTAL_GLOBAL_ITER 100
+#define ITER_PER_PROC 2e7
 #define TASKS_LEFT_TO_DO 5
 #define NO_TASKS_FLAG -1
 #define REQUEST_TAG 333

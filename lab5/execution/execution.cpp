@@ -68,9 +68,6 @@ void* count(void* data){
                     break;
                 }
             }
-            if (shiftProc == procInfo->size){
-                break;
-            }
         }
 #ifdef DEBUG_INFO
         if (procInfo-> rank == 0){
